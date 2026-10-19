@@ -242,6 +242,28 @@ function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<st
   return out.length ? out : "Could not build options from these matches.";
 }
 
+// Native date inputs show the browser's locale (10/19 on US settings), so the
+// visible text is drawn here as day/month/year and the real input sits invisibly on top.
+function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [y, m, d] = value.split("-");
+  return (
+    <span className={`${field} relative flex items-center`}>
+      {value ? `${d}/${m}/${y}` : "dd/mm/yyyy"}
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => {
+          try {
+            e.currentTarget.showPicker();
+          } catch {}
+        }}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+    </span>
+  );
+}
+
 const field =
   "h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none transition-colors focus:border-accent";
 
@@ -1026,11 +1048,11 @@ export function ParlayBuilder({
           </label>
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block text-muted">From date</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={field} />
+            <DateField value={from} onChange={setFrom} />
           </label>
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block text-muted">To date</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
+            <DateField value={to} onChange={setTo} />
           </label>
         </div>
 

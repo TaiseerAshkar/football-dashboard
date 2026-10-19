@@ -149,8 +149,17 @@ async function Shared({ searchParams }: { searchParams: Search }) {
                 </div>
               </div>
               <p className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11.5px] leading-snug">
-                <span className="font-semibold text-accent">Why: </span>
-                {explain(toLeg(p), formIndex)}
+                {(() => {
+                  const ex = explain(toLeg(p), formIndex);
+                  return (
+                    <>
+                      <span className={`font-semibold ${ex.supports === false ? "text-amber-500" : "text-accent"}`}>
+                        {ex.supports === false ? "Heads up: " : "Why: "}
+                      </span>
+                      {ex.text}
+                    </>
+                  );
+                })()}
               </p>
             </li>
           ))}

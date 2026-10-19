@@ -62,13 +62,19 @@ function venueText(t: TeamForm, atHome: boolean) {
   return ` ${atHome ? "At home" : "Away"} they are ${w}W ${d}D ${l}L in their last ${games.length}.`;
 }
 
-export function explain(leg: Leg, index: TeamForm[]): string {
+// `supports` says whether recent form backs the pick (true), argues against it (false),
+// or there is nothing to compare (null). Form against the pick is still shown, but
+// labelled as a warning instead of a reason.
+export type Explanation = { text: string; supports: boolean | null };
+
+export function explain(leg: Leg, index: TeamForm[]): Explanation {
   const market = `${leg.source} prices it at ${leg.odds.toFixed(2)}, about ${(leg.prob * 100).toFixed(0)}% likely.`;
-  if (leg.kind === "player") return `A goal-scorer prop, priced by US bookmakers. ${market}`;
+  if (leg.kind === "player") return { text: `A goal-scorer prop, priced by US bookmakers. ${market}`, supports: null };
 
   const h = findTeam(index, leg.home);
   const a = findTeam(index, leg.away);
   let why = "";
+  let supports: boolean | null = null;
 
   if (leg.kind === "result" || leg.kind === "dc") {
     const pick = leg.pick;
@@ -83,14 +89,18 @@ export function explain(leg: Leg, index: TeamForm[]): string {
       why = `${sideName} won ${wins(side)} of their last 5 (${goalsFor(side)} scored, ${goalsAgainst(side)} conceded).`;
       why += venueText(side, homeSide);
       if (enough(other)) why += ` ${otherName} lost ${losses(other)} of theirs.`;
+      supports = wins(side) >= 3 || (wins(side) >= 2 && enough(other) && losses(other) >= 2);
     } else if (pick.endsWith("or draw") && enough(side)) {
       why = `${sideName} avoided defeat in ${5 - losses(side)} of their last 5.`;
       why += venueText(side, homeSide);
       if (enough(other)) why += ` ${otherName} won ${wins(other)} of theirs.`;
+      supports = losses(side) <= 1;
     } else if (pick === "Draw" && enough(h) && enough(a)) {
       why = `${draws(h)} of ${leg.home}'s and ${draws(a)} of ${leg.away}'s last 5 games ended level.`;
+      supports = draws(h) + draws(a) >= 3;
     } else if (pick.startsWith("Either team") && enough(h) && enough(a)) {
       why = `Only ${plural(draws(h), "draw")} for ${leg.home} and ${draws(a)} for ${leg.away} in their last 5, so a winner is likely.`;
+      supports = draws(h) + draws(a) <= 2;
     }
   } else if (leg.kind === "goals" || leg.kind === "lines") {
     const m = leg.pick.match(/^(Over|Under) ([0-9.]+) goals$/);
@@ -106,6 +116,7 @@ export function explain(leg: Leg, index: TeamForm[]): string {
       why = `${m[1]} ${line} goals happened in ${parts.join(" and ")}.`;
       const avg = have.reduce((s, x) => s + goalsFor(x.team) + goalsAgainst(x.team), 0) / (have.length * 5);
       why += ` ${have.length === 1 ? `${have[0].name}'s games` : "Their games"} average ${avg.toFixed(1)} goals.`;
+      supports = have.reduce((n, x) => n + hit(x.team), 0) / (have.length * 5) >= 0.5;
     }
   } else if (leg.kind === "btts") {
     const have = [
@@ -119,8 +130,12 @@ export function explain(leg: Leg, index: TeamForm[]): string {
         leg.pick === "Both teams to score"
           ? `Both teams scored in ${parts.join(" and ")}.`
           : `Both teams scored in only ${parts.join(" and ")}.`;
+      const rate = have.reduce((n, x) => n + both(x.team), 0) / (have.length * 5);
+      supports = leg.pick === "Both teams to score" ? rate >= 0.5 : rate <= 0.5;
     }
   }
 
-  return why ? `${why} ${market}` : `No recent results to compare. ${market}`;
+  if (!why) return { text: `No recent results to compare. ${market}`, supports: null };
+  const tail = supports === false ? " Recent form leans the other way, so this pick rests mostly on the bookmaker price." : "";
+  return { text: `${why}${tail} ${market}`, supports };
 }

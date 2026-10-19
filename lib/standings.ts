@@ -1,12 +1,15 @@
 import { cacheLife } from "next/cache";
+import { apiGet } from "@/lib/football";
 
 export type StandingRow = {
   position: number;
-  team: { id: number; name: string; crest: string };
+  team: { id: number; name: string; shortName: string; crest: string };
   playedGames: number;
   won: number;
   draw: number;
   lost: number;
+  goalsFor: number;
+  goalsAgainst: number;
   goalDifference: number;
   points: number;
 };
@@ -26,24 +29,11 @@ export async function getStandings(): Promise<StandingsResult> {
     return { ok: false, status, error };
   };
 
-  const key = process.env.FOOTBALL_API_KEY;
-  if (!key) return fail(500, "API key is not configured");
+  const r = await apiGet("/competitions/PL/standings");
+  if (!r.ok) return fail(r.status, r.error);
 
-  let res: Response;
-  try {
-    res = await fetch("https://api.football-data.org/v4/competitions/PL/standings", {
-      headers: { "X-Auth-Token": key },
-    });
-  } catch {
-    return fail(502, "Football data service is unreachable");
-  }
-
-  if (res.status === 429) return fail(429, "Rate limit reached, try again in a minute");
-  if (!res.ok) return fail(502, "Football data service returned an error");
-
-  const data = await res.json();
   // "TOTAL" is the full-season table (the API also returns HOME and AWAY).
-  const total = data.standings?.find((s: { type: string }) => s.type === "TOTAL");
+  const total = r.data.standings?.find((s: { type: string }) => s.type === "TOTAL");
   if (!total) return fail(502, "Unexpected response from football data service");
   return { ok: true, table: total.table };
 }

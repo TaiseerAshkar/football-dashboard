@@ -7,6 +7,7 @@ export const LEAGUES = [
   { code: "SA", name: "Serie A" },
   { code: "FL1", name: "Ligue 1" },
   { code: "PPL", name: "Primeira Liga" },
+  { code: "CL", name: "Champions League" },
 ] as const;
 
 export type LeagueCode = (typeof LEAGUES)[number]["code"];

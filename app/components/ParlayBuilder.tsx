@@ -341,23 +341,26 @@ function OptionCard({
             x{built.odds.toFixed(2)}
           </div>
         </div>
-        <div className="space-y-0.5 text-right text-xs text-muted">
-          <div>
-            <b className="text-base tabular-nums text-foreground">{(built.chance * 100).toFixed(1)}%</b> all hit
+        {stake > 0 ? (
+          <div className="rounded-xl bg-accent-soft px-3 py-2 text-right">
+            <div className="text-[11px] font-medium text-muted">Stake {stake} returns</div>
+            <div className="text-2xl font-extrabold leading-tight tabular-nums text-accent">
+              {(stake * built.odds).toFixed(2)}
+            </div>
+            <div className="text-[11px] font-semibold tabular-nums text-good">
+              profit +{(stake * built.odds - stake).toFixed(2)}
+            </div>
           </div>
-          <div>
-            <b className="tabular-nums text-foreground">{(built.avgLeg * 100).toFixed(0)}%</b> avg leg
-          </div>
-        </div>
+        ) : (
+          <p className="max-w-[9rem] text-right text-xs text-muted">Enter a stake above to see your payout</p>
+        )}
       </div>
+      <p className="mt-2 text-xs text-muted">
+        <b className="tabular-nums text-foreground">{(built.chance * 100).toFixed(1)}%</b> chance all hit ·{" "}
+        <b className="tabular-nums text-foreground">{(built.avgLeg * 100).toFixed(0)}%</b> avg leg
+      </p>
       {!built.close && (
         <p className="mt-2 text-xs text-muted">Closest I could get to {targetLabel} with these settings.</p>
-      )}
-      {stake > 0 && (
-        <p className="mt-2 rounded-lg bg-accent-soft px-2.5 py-1.5 text-sm">
-          Stake <b>{stake}</b> → returns <b>{(stake * built.odds).toFixed(2)}</b> · profit{" "}
-          <b className="text-good">+{(stake * built.odds - stake).toFixed(2)}</b>
-        </p>
       )}
 
       <TicketCut />

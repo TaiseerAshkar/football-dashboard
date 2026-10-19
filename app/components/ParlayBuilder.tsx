@@ -157,8 +157,8 @@ function build(legs: Leg[], n: number, target: number): Built[] | string {
   }[] = [
     {
       name: "Safest",
-      blurb: "Highest chance that every leg hits. It can pad with very safe legs.",
-      minOdds: 1.05,
+      blurb: "Highest chance that every leg hits, with no throwaway 1.0x legs.",
+      minOdds: 1.12,
       score: (sel) => delta(sel) + riskOf(sel),
     },
     {

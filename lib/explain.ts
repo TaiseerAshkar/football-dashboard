@@ -139,20 +139,32 @@ export function explain(leg: Leg, index: TeamForm[]): string {
     }
   } else if (leg.kind === "goals" || leg.kind === "lines") {
     const m = leg.pick.match(/^(Over|Under) ([0-9.]+) goals$/);
-    if (m && enough(h) && enough(a)) {
+    const have = [
+      { team: h, name: leg.home },
+      { team: a, name: leg.away },
+    ].filter((x): x is { team: TeamForm; name: string } => enough(x.team));
+    if (m && have.length > 0) {
       const line = Number(m[2]);
       const over = m[1] === "Over";
       const hit = (t: TeamForm) => count(t, (g) => (over ? g.gf + g.ga > line : g.gf + g.ga < line));
-      why = `${m[1]} ${line} goals happened in ${hit(h)} of ${leg.home}'s last 5 and ${hit(a)} of ${leg.away}'s.`;
-      const avg = (goalsFor(h) + goalsAgainst(h) + goalsFor(a) + goalsAgainst(a)) / 10;
-      why += ` Their games average ${avg.toFixed(1)} goals.`;
+      const parts = have.map((x) => `${hit(x.team)} of ${x.name}'s last 5`);
+      why = `${m[1]} ${line} goals happened in ${parts.join(" and ")}.`;
+      const avg = have.reduce((s, x) => s + goalsFor(x.team) + goalsAgainst(x.team), 0) / (have.length * 5);
+      why += ` ${have.length === 1 ? `${have[0].name}'s games` : "Their games"} average ${avg.toFixed(1)} goals.`;
     }
-  } else if (leg.kind === "btts" && enough(h) && enough(a)) {
-    const both = (t: TeamForm) => count(t, (g) => g.gf > 0 && g.ga > 0);
-    const yes = leg.pick === "Both teams to score";
-    why = yes
-      ? `Both teams scored in ${both(h)} of ${leg.home}'s last 5 and ${both(a)} of ${leg.away}'s.`
-      : `Both teams scored in only ${both(h)} of ${leg.home}'s last 5 and ${both(a)} of ${leg.away}'s.`;
+  } else if (leg.kind === "btts") {
+    const have = [
+      { team: h, name: leg.home },
+      { team: a, name: leg.away },
+    ].filter((x): x is { team: TeamForm; name: string } => enough(x.team));
+    if (have.length > 0) {
+      const both = (t: TeamForm) => count(t, (g) => g.gf > 0 && g.ga > 0);
+      const parts = have.map((x) => `${both(x.team)} of ${x.name}'s last 5`);
+      why =
+        leg.pick === "Both teams to score"
+          ? `Both teams scored in ${parts.join(" and ")}.`
+          : `Both teams scored in only ${parts.join(" and ")}.`;
+    }
   }
 
   return why ? `${why} ${market}` : `No recent results to compare. ${market}`;

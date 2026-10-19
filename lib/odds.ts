@@ -277,10 +277,11 @@ function legsFromDetail(event: RawEvent, sport: string, league: string, market: 
         const o = m.outcomes.find((x) => x.name === quoted);
         return o ? [{ label, price: o.price }] : [];
       });
-      // each match result sits inside two of the three bets, so the fair chances add up to 2
-      const sum = found.reduce((s, f) => s + 1 / f.price, 0);
+      // each match result sits inside two of the three bets, so the fair chances add up to 2;
+      // normalise over ALL three quoted prices (even if a name didn't match) and never exceed 97%
+      const sum = m.outcomes.reduce((t, o) => t + 1 / o.price, 0);
       for (const f of found) {
-        legs.push({ ...base, kind: "dc", pick: f.label, odds: f.price, prob: ((1 / f.price) / sum) * 2, source: m.source });
+        legs.push({ ...base, kind: "dc", pick: f.label, odds: f.price, prob: Math.min(0.97, ((1 / f.price) / sum) * 2), source: m.source });
       }
     }
   }

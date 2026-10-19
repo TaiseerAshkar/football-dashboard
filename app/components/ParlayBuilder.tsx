@@ -5,10 +5,17 @@ import { loadExtraOdds } from "@/app/parlay/actions";
 import { explain, type TeamForm } from "@/lib/explain";
 import type { ExtraMarket, ExtraRequest, Leg, LegKind } from "@/lib/odds";
 
-type Built = { picks: Leg[]; odds: number; chance: number; avgLeg: number; close: boolean };
+type Built = {
+  picks: Leg[];
+  odds: number;
+  chance: number;
+  avgLeg: number;
+  close: boolean;
+  name: string;
+  blurb: string;
+};
 
 const TARGETS = [2, 3, 5, 10, 20, 50, 100, 150, 300];
-const OPTIONS = 3;
 // Extra prices cost 1 credit per match, so only the most promising matches get them.
 const CAP_PER_MARKET = 15;
 
@@ -70,29 +77,29 @@ const shuffle = <T,>(xs: T[]) => {
   return a;
 };
 
-// Random search: pick n different matches, then repeatedly swap legs to land on the
-// target odds with the safest (highest chance) combination. Runs many tries and
-// returns the best few different combinations (they may share games).
-function build(legs: Leg[], n: number, target: number): Built[] | string {
-  const matchIds = [...new Set(legs.map((l) => l.matchId))];
-  if (matchIds.length < n) {
-    return `Only ${matchIds.length} ${matchIds.length === 1 ? "match" : "matches"} with the chosen bet types in that date range. Choose fewer games, more bet types, or widen the dates.`;
-  }
+// Random search: pick n different matches, then repeatedly swap legs to lower the
+// score (which always includes landing on the target odds). Keeps the best of
+// many tries. Legs cheaper than `minOdds` are ignored, so a strategy can refuse
+// to pad the parlay with near-certain 1.02 legs.
+function search(
+  legs: Leg[],
+  n: number,
+  target: number,
+  minOdds: number,
+  score: (sel: Leg[]) => number,
+): Leg[] | null {
+  let pool = legs.filter((l) => l.odds >= minOdds);
+  if (new Set(pool.map((l) => l.matchId)).size < n) pool = legs; // too few matches: relax the minimum
+  const matchIds = [...new Set(pool.map((l) => l.matchId))];
+  if (matchIds.length < n) return null;
+
   const g = Math.log(target) / n; // ideal log-odds per leg
   const byMatch = new Map<string, Leg[]>();
-  for (const p of legs) byMatch.set(p.matchId, [...(byMatch.get(p.matchId) ?? []), p]);
+  for (const p of pool) byMatch.set(p.matchId, [...(byMatch.get(p.matchId) ?? []), p]);
 
-  // Lower is better. First priority: land on the target odds. Second: be as safe
-  // as possible, meaning the highest chance that every leg hits (the sum of
-  // -ln(chance) is smallest when the product of the chances is largest).
-  const score = (sel: Leg[]) => {
-    const total = sel.reduce((s, p) => s + Math.log(p.odds), 0);
-    const risky = sel.reduce((s, p) => s - Math.log(p.prob), 0);
-    return Math.abs(total - Math.log(target)) * 15 + risky;
-  };
-
-  const found = new Map<string, { sel: Leg[]; score: number }>();
-  for (let attempt = 0; attempt < 300; attempt++) {
+  let best: Leg[] | null = null;
+  let bestScore = Infinity;
+  for (let attempt = 0; attempt < 200; attempt++) {
     const ids = shuffle(matchIds).slice(0, n);
     let sel = ids.map((id) => {
       const options = byMatch.get(id)!;
@@ -104,7 +111,7 @@ function build(legs: Leg[], n: number, target: number): Built[] | string {
     for (let pass = 0; pass < 40; pass++) {
       const i = Math.floor(Math.random() * n);
       const used = new Set(sel.filter((_, k) => k !== i).map((p) => p.matchId));
-      const candidates = legs.filter((p) => !used.has(p.matchId));
+      const candidates = pool.filter((p) => !used.has(p.matchId));
       const trial = sel.map((p, k) =>
         k === i ? candidates[Math.floor(Math.random() * candidates.length)] : p,
       );
@@ -119,24 +126,84 @@ function build(legs: Leg[], n: number, target: number): Built[] | string {
         if (score(option) < score(sel)) sel = option;
       }
     }
-    const key = sel
-      .map((p) => `${p.matchId}:${p.pick}`)
-      .sort()
-      .join("|");
     const s = score(sel);
-    if (!found.has(key) || found.get(key)!.score > s) found.set(key, { sel, score: s });
+    if (s < bestScore) {
+      bestScore = s;
+      best = sel;
+    }
   }
+  return best;
+}
 
-  return [...found.values()]
-    .sort((a, b) => a.score - b.score)
-    .slice(0, OPTIONS)
-    .map(({ sel }) => {
-      const picks = [...sel].sort((a, b) => a.date.localeCompare(b.date));
-      const odds = picks.reduce((s, p) => s * p.odds, 1);
-      const chance = picks.reduce((s, p) => s * p.prob, 1);
-      const avgLeg = picks.reduce((s, p) => s + p.prob, 0) / picks.length;
-      return { picks, odds, chance, avgLeg, close: Math.abs(Math.log(odds / target)) <= 0.15 };
+const logSum = (sel: Leg[]) => sel.reduce((s, p) => s + Math.log(p.odds), 0);
+const riskOf = (sel: Leg[]) => sel.reduce((s, p) => s - Math.log(p.prob), 0); // lower = safer
+
+// Three genuinely different ideas for the same games and total odds.
+function build(legs: Leg[], n: number, target: number): Built[] | string {
+  const matchCount = new Set(legs.map((l) => l.matchId)).size;
+  if (matchCount < n) {
+    return `Only ${matchCount} ${matchCount === 1 ? "match" : "matches"} with the chosen bet types in that date range. Choose fewer games, more bet types, or widen the dates.`;
+  }
+  const g = Math.log(target) / n;
+  const delta = (sel: Leg[]) => Math.abs(logSum(sel) - Math.log(target)) * 15;
+  const spread = (sel: Leg[]) => sel.reduce((s, p) => s + Math.abs(Math.log(p.odds) - g), 0);
+  const keys = (sel: Leg[]) => sel.map((p) => `${p.matchId}:${p.pick}`);
+
+  const plans: {
+    name: string;
+    blurb: string;
+    minOdds: number;
+    score: (sel: Leg[], taken: Set<string>, takenMatches: Set<string>) => number;
+  }[] = [
+    {
+      name: "Safest",
+      blurb: "Highest chance that every leg hits. It can pad with very safe legs.",
+      minOdds: 1.05,
+      score: (sel) => delta(sel) + riskOf(sel),
+    },
+    {
+      name: "Balanced",
+      blurb: "Every leg at a similar price, no padding.",
+      minOdds: 1.12,
+      score: (sel, taken) =>
+        delta(sel) + spread(sel) * 1.2 + riskOf(sel) * 0.3 + keys(sel).filter((k) => taken.has(k)).length * 0.4,
+    },
+    {
+      name: "Varied",
+      blurb: "Mixes different bet types, on different matches.",
+      minOdds: 1.1,
+      score: (sel, taken, takenMatches) =>
+        delta(sel) +
+        riskOf(sel) * 0.5 +
+        (n - new Set(sel.map((p) => p.kind)).size) * 0.4 +
+        sel.filter((p) => takenMatches.has(p.matchId)).length * 0.35 +
+        keys(sel).filter((k) => taken.has(k)).length * 0.4,
+    },
+  ];
+
+  const out: Built[] = [];
+  const taken = new Set<string>();
+  const takenMatches = new Set<string>();
+  for (const plan of plans) {
+    const sel = search(legs, n, target, plan.minOdds, (s) => plan.score(s, taken, takenMatches));
+    if (!sel) continue;
+    keys(sel).forEach((k) => taken.add(k));
+    sel.forEach((p) => takenMatches.add(p.matchId));
+    const picks = [...sel].sort((a, b) => a.date.localeCompare(b.date));
+    const odds = picks.reduce((s, p) => s * p.odds, 1);
+    const chance = picks.reduce((s, p) => s * p.prob, 1);
+    const avgLeg = picks.reduce((s, p) => s + p.prob, 0) / picks.length;
+    out.push({
+      picks,
+      odds,
+      chance,
+      avgLeg,
+      close: Math.abs(Math.log(odds / target)) <= 0.15,
+      name: plan.name,
+      blurb: plan.blurb,
     });
+  }
+  return out.length ? out : "Could not build options from these matches.";
 }
 
 const field =
@@ -168,10 +235,11 @@ function OptionCard({
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted">
           Option {index + 1}
-          {index === 0 && <span className="ml-1.5 normal-case text-accent">· safest</span>}
+          <span className="ml-1.5 normal-case text-accent">· {built.name}</span>
         </span>
         <span className={`text-sm font-semibold ${r.text}`}>{r.label}</span>
       </div>
+      <p className="mt-1 text-xs text-muted">{built.blurb}</p>
 
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
         <div
@@ -191,29 +259,31 @@ function OptionCard({
 
       <ol className="mt-3 divide-y divide-line text-sm">
         {built.picks.map((p, i) => (
-          <li key={`${p.matchId}-${p.pick}`} className="flex items-start gap-2.5 py-2.5">
-            <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-bold text-accent">
-              {i + 1}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium leading-snug">
-                {p.pick}
-                {p.note && <span className="ml-1.5 text-xs font-normal text-warn">{p.note}</span>}
-              </p>
-              <p className="text-xs leading-snug text-muted">
-                {p.match} · {p.league} · {formatKickoff(p.date)}
-              </p>
-              <p className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs leading-snug">
-                <span className="font-semibold text-accent">Why: </span>
-                {explain(p, formIndex)}
-              </p>
+          <li key={`${p.matchId}-${p.pick}`} className="py-2.5">
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-bold text-accent">
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium leading-snug">
+                  {p.pick}
+                  {p.note && <span className="ml-1.5 text-xs font-normal text-warn">{p.note}</span>}
+                </p>
+                <p className="text-xs leading-snug text-muted">
+                  {p.match} · {p.league} · {formatKickoff(p.date)}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
+                <p className="text-[11px] tabular-nums text-muted">
+                  {(p.prob * 100).toFixed(0)}% · {p.source}
+                </p>
+              </div>
             </div>
-            <div className="shrink-0 text-right">
-              <p className="font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
-              <p className="text-[11px] tabular-nums text-muted">
-                {(p.prob * 100).toFixed(0)}% · {p.source}
-              </p>
-            </div>
+            <p className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11.5px] leading-snug">
+              <span className="font-semibold text-accent">Why: </span>
+              {explain(p, formIndex)}
+            </p>
           </li>
         ))}
       </ol>
@@ -530,7 +600,7 @@ export function ParlayBuilder({
               <OptionCard key={i} built={b} index={i} target={target} formIndex={formIndex} />
             ))}
           </div>
-          {built.length < OPTIONS && (
+          {built.length < 3 && (
             <p className="text-sm text-muted">
               Only {built.length} {built.length === 1 ? "combination fits" : "combinations fit"} these settings.
               Widen the dates, add bet types or choose fewer games for more options.

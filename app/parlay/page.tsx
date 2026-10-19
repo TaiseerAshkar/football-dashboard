@@ -59,7 +59,7 @@ async function Builder() {
 
 export default function ParlayPage() {
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
+    <main className="mx-auto w-full max-w-[1600px] flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Parlay builder</h1>
         <p className="mt-2 text-sm text-muted">

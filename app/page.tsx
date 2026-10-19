@@ -186,7 +186,15 @@ async function Dashboard({
             </Link>
           ))}
         </nav>
+        <div className="flex items-center gap-2">
+        <Link
+          href="/parlay"
+          className="rounded-full border px-3 py-1 text-sm hover:bg-black/[.06] dark:hover:bg-white/[.1]"
+        >
+          Parlay builder
+        </Link>
         <ThemeToggle />
+      </div>
       </div>
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <section>

@@ -24,6 +24,7 @@ type Built = {
 };
 
 const TARGETS = [2, 3, 5, 10, 20, 50, 100, 150, 300];
+const MAX_GAMES = 30;
 // Extra prices cost 1 credit per match, so only the most promising matches get them.
 const CAP_PER_MARKET = 15;
 
@@ -429,7 +430,8 @@ export function ParlayBuilder({
   formIndex: TeamForm[];
   meta: { remaining: number | null; updated: string | null };
 }) {
-  const [count, setCount] = useState(5);
+  const [countPreset, setCountPreset] = useState("5");
+  const [customGames, setCustomGames] = useState("");
   const [preset, setPreset] = useState("5");
   const [custom, setCustom] = useState("");
   const [rangeLow, setRangeLow] = useState("4");
@@ -499,6 +501,7 @@ export function ParlayBuilder({
     });
   }
 
+  const count = countPreset === "custom" ? Number(customGames) : Number(countPreset);
   const isRange = preset === "range";
   const low = isRange ? Number(rangeLow) : preset === "custom" ? Number(custom) : Number(preset);
   const high = isRange ? Number(rangeHigh) : low;
@@ -541,6 +544,9 @@ export function ParlayBuilder({
   function run() {
     setNotice(null);
     setConfirm(null);
+    if (!Number.isInteger(count) || count < 1 || count > MAX_GAMES) {
+      return setResults(`Enter a number of games from 1 to ${MAX_GAMES}.`);
+    }
     if (!(low > 1) || !(high >= low)) {
       return setResults(
         isRange
@@ -626,12 +632,13 @@ export function ParlayBuilder({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block text-muted">Number of games</span>
-            <select value={count} onChange={(e) => setCount(Number(e.target.value))} className={field}>
+            <select value={countPreset} onChange={(e) => setCountPreset(e.target.value)} className={field}>
               {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                 <option key={n} value={n}>
                   {n} {n === 1 ? "game" : "games"}
                 </option>
               ))}
+              <option value="custom">Custom...</option>
             </select>
           </label>
           <label className="block text-sm font-medium">
@@ -655,6 +662,23 @@ export function ParlayBuilder({
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
           </label>
         </div>
+
+        {countPreset === "custom" && (
+          <label className="mt-4 block max-w-[12rem] text-sm font-medium">
+            <span className="mb-1.5 block text-muted">Custom number of games</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max={MAX_GAMES}
+              step="1"
+              value={customGames}
+              onChange={(e) => setCustomGames(e.target.value)}
+              placeholder={`1 to ${MAX_GAMES}`}
+              className={field}
+            />
+          </label>
+        )}
 
         {isRange && (
           <div className="mt-4 flex max-w-sm items-end gap-3">

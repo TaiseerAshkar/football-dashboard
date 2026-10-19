@@ -32,6 +32,7 @@ export const LEAGUES = [
   },
   { code: "FL1", name: "Ligue 1", zones: { bottom: { count: 2, label: "Relegation" } } },
   { code: "PPL", name: "Primeira Liga", zones: { bottom: { count: 2, label: "Relegation" } } },
+  { code: "DED", name: "Eredivisie", zones: { bottom: { count: 2, label: "Relegation" } } },
   {
     code: "CL",
     name: "Champions League",

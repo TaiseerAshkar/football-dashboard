@@ -45,7 +45,7 @@ async function Standings({ league }: { league: LeagueCode }) {
           Live matches are counted in the table, so positions and points are provisional until full time.
         </div>
       )}
-      <StandingsTable rows={rows} infos={infos} zones={zones} />
+      <StandingsTable rows={rows} infos={infos} zones={zones} league={league} />
     </>
   );
 }

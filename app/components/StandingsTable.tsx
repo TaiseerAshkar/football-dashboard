@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useEffect, useState } from "react";
 import { FormBadges } from "@/app/components/FormBadges";
 import { ProbBar } from "@/app/components/ProbBar";
@@ -168,10 +169,15 @@ function Bullets({ items, tone }: { items: string[]; tone: "good" | "bad" }) {
   );
 }
 
-function TeamPanel({ info, teamId, name }: { info: TeamInfo; teamId: number; name: string }) {
+function TeamPanel({ info, teamId, name, league }: { info: TeamInfo; teamId: number; name: string; league: string }) {
   const { next, stats, pros, cons, games } = info;
   return (
     <div className="space-y-3 p-3 sm:p-5">
+      <div className="flex justify-end">
+        <Link href={`/team/${league}/${teamId}`} className="text-sm font-medium text-accent hover:underline">
+          Full team stats →
+        </Link>
+      </div>
       {next ? (
         <Card title="Next match">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -282,10 +288,12 @@ export function StandingsTable({
   rows,
   infos,
   zones,
+  league,
 }: {
   rows: LiveRow[];
   infos: Record<number, TeamInfo>;
   zones: Zones;
+  league: string;
 }) {
   const [openId, setOpenId] = useState<number | null>(null);
   const legend = (["top", "mid", "bottom"] as const).flatMap((k) => (zones[k] ? [{ k, label: zones[k]!.label }] : []));
@@ -379,7 +387,7 @@ export function StandingsTable({
                   {open && info && (
                     <tr className="border-t border-line bg-surface-2/40">
                       <td colSpan={9} className="p-0">
-                        <TeamPanel info={info} teamId={row.team.id} name={name} />
+                        <TeamPanel info={info} teamId={row.team.id} name={name} league={league} />
                       </td>
                     </tr>
                   )}

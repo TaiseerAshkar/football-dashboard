@@ -1,6 +1,18 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { HeaderNav } from "@/app/components/HeaderNav";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
+
+// Shown for a moment while HeaderNav finds out which page is open.
+function PlainNav() {
+  const link = "rounded-full px-3 py-1.5 text-sm font-medium text-muted";
+  return (
+    <nav className="flex items-center gap-1" aria-label="Main">
+      <span className={link}>Tables</span>
+      <span className={link}>Parlay builder</span>
+    </nav>
+  );
+}
 
 export function SiteHeader() {
   return (
@@ -16,7 +28,9 @@ export function SiteHeader() {
           <span className="hidden min-[380px]:inline">Football Dashboard</span>
         </Link>
         <div className="flex items-center gap-2">
-          <HeaderNav />
+          <Suspense fallback={<PlainNav />}>
+            <HeaderNav />
+          </Suspense>
           <ThemeToggle />
         </div>
       </div>

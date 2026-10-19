@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import { loadExtraOdds } from "@/app/parlay/actions";
 import { explain, type TeamForm } from "@/lib/explain";
+import {
+  loadSaved,
+  newId,
+  signature,
+  storeSaved,
+  type SavedParlay,
+  type SavedStatus,
+} from "@/lib/saved";
 import type { ExtraMarket, ExtraRequest, Leg, LegKind } from "@/lib/odds";
 
 type Built = {
@@ -223,11 +231,15 @@ function OptionCard({
   index,
   target,
   formIndex,
+  saved,
+  onSave,
 }: {
   built: Built;
   index: number;
   target: number;
   formIndex: TeamForm[];
+  saved: boolean;
+  onSave: () => void;
 }) {
   const r = risk(built.chance);
   return (
@@ -287,7 +299,112 @@ function OptionCard({
           </li>
         ))}
       </ol>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saved}
+        className={`mt-3 h-10 w-full rounded-xl border text-sm font-semibold transition ${
+          saved
+            ? "border-accent bg-accent-soft text-accent"
+            : "border-line bg-surface hover:border-accent hover:text-accent"
+        }`}
+      >
+        {saved ? "✓ Saved" : "Save this parlay"}
+      </button>
     </article>
+  );
+}
+
+const STATUS_LABEL: Record<SavedStatus, string> = { pending: "Pending", won: "Won", lost: "Lost" };
+const STATUS_STYLE: Record<SavedStatus, string> = {
+  pending: "border-accent bg-accent-soft text-accent",
+  won: "border-good bg-good/15 text-good",
+  lost: "border-bad bg-bad/15 text-bad",
+};
+
+function SavedList({
+  list,
+  onStatus,
+  onRemove,
+}: {
+  list: SavedParlay[];
+  onStatus: (id: string, status: SavedStatus) => void;
+  onRemove: (id: string) => void;
+}) {
+  if (list.length === 0) return null;
+  const won = list.filter((p) => p.status === "won").length;
+  const lost = list.filter((p) => p.status === "lost").length;
+  const pending = list.length - won - lost;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-semibold">Saved parlays</h2>
+        <p className="text-sm text-muted">
+          <b className="text-good">{won} won</b> · <b className="text-bad">{lost} lost</b> · {pending} pending. Saved
+          in this browser only.
+        </p>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-3">
+        {list.map((p) => (
+          <article key={p.id} className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">
+                  x{p.odds.toFixed(2)} · {p.picks.length} {p.picks.length === 1 ? "leg" : "legs"}
+                </p>
+                <p className="text-xs text-muted">
+                  {p.plan} · {(p.chance * 100).toFixed(1)}% to hit · saved{" "}
+                  {new Date(p.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemove(p.id)}
+                aria-label="Delete saved parlay"
+                title="Delete"
+                className="rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-bad"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-3 flex gap-1.5" role="group" aria-label="Result">
+              {(Object.keys(STATUS_LABEL) as SavedStatus[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  aria-pressed={p.status === st}
+                  onClick={() => onStatus(p.id, st)}
+                  className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
+                    p.status === st ? STATUS_STYLE[st] : "border-line text-muted hover:text-foreground"
+                  }`}
+                >
+                  {STATUS_LABEL[st]}
+                </button>
+              ))}
+            </div>
+
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-xs font-medium text-accent">Show legs</summary>
+              <ol className="mt-2 divide-y divide-line">
+                {p.picks.map((leg, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="font-medium leading-snug">{leg.pick}</p>
+                      <p className="text-xs leading-snug text-muted">
+                        {leg.match} · {leg.league} · {formatKickoff(leg.date)}
+                      </p>
+                    </div>
+                    <b className="shrink-0 tabular-nums">{leg.odds.toFixed(2)}</b>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -324,6 +441,7 @@ export function ParlayBuilder({
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [results, setResults] = useState<Built[] | string | null>(null);
+  const [saved, setSaved] = useState<SavedParlay[]>([]);
 
   // Default range: today to a week from now (set after load so the server and
   // browser, which can be in different time zones, never disagree).
@@ -331,7 +449,44 @@ export function ParlayBuilder({
     const today = new Date();
     setFrom(localDate(today));
     setTo(localDate(addDays(today, 6)));
+    setSaved(loadSaved()); // saved parlays live in this browser only
   }, []);
+
+  // Always works from the latest list, so quick successive clicks never lose a save.
+  function updateSaved(change: (prev: SavedParlay[]) => SavedParlay[]) {
+    setSaved((prev) => {
+      const next = change(prev);
+      storeSaved(next);
+      return next;
+    });
+  }
+
+  function saveBuilt(b: Built) {
+    const sig = signature(b.picks);
+    updateSaved((prev) => {
+      if (prev.some((p) => signature(p.picks) === sig)) return prev;
+      return [
+      {
+        id: newId(),
+        savedAt: new Date().toISOString(),
+        plan: b.name,
+        odds: b.odds,
+        chance: b.chance,
+        status: "pending",
+        picks: b.picks.map((p) => ({
+          pick: p.pick,
+          match: p.match,
+          league: p.league,
+          date: p.date,
+          odds: p.odds,
+          prob: p.prob,
+          source: p.source,
+        })),
+      },
+      ...prev,
+      ];
+    });
+  }
 
   const target = preset === "custom" ? Number(custom) : Number(preset);
 
@@ -597,7 +752,15 @@ export function ParlayBuilder({
         <div className="space-y-3">
           <div className="grid gap-4 lg:grid-cols-3">
             {built.map((b, i) => (
-              <OptionCard key={i} built={b} index={i} target={target} formIndex={formIndex} />
+              <OptionCard
+                key={i}
+                built={b}
+                index={i}
+                target={target}
+                formIndex={formIndex}
+                saved={saved.some((p) => signature(p.picks) === signature(b.picks))}
+                onSave={() => saveBuilt(b)}
+              />
             ))}
           </div>
           {built.length < 3 && (
@@ -608,6 +771,12 @@ export function ParlayBuilder({
           )}
         </div>
       )}
+
+      <SavedList
+        list={saved}
+        onStatus={(id, status) => updateSaved((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)))}
+        onRemove={(id) => updateSaved((prev) => prev.filter((p) => p.id !== id))}
+      />
 
       <p className="rounded-xl bg-surface-2 p-4 text-xs leading-relaxed text-muted">
         Odds are real bookmaker prices (mostly Betsson, whose prices track Stake&apos;s closely) from The Odds API.

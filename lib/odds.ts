@@ -5,8 +5,8 @@ import type { Result } from "@/lib/football";
 // covered, so we use Betsson, whose prices track Stake's closely.
 //
 // Free plan = 500 credits/month. One call per competition with two markets costs
-// 2 credits, and the cache below only refreshes each competition every 30 hours:
-// 9 competitions x 2 credits x ~24 refreshes a month = ~430 credits.
+// 2 credits, and the cache below only refreshes each competition every 36 hours:
+// 10 competitions x 2 credits x ~20 refreshes a month = ~400 credits.
 export const ODDS_SPORTS = [
   { key: "soccer_epl", league: "Premier League" },
   { key: "soccer_spain_la_liga", league: "La Liga" },
@@ -14,12 +14,13 @@ export const ODDS_SPORTS = [
   { key: "soccer_italy_serie_a", league: "Serie A" },
   { key: "soccer_france_ligue_one", league: "Ligue 1" },
   { key: "soccer_portugal_primeira_liga", league: "Primeira Liga" },
+  { key: "soccer_netherlands_eredivisie", league: "Eredivisie" },
   { key: "soccer_uefa_champs_league", league: "Champions League" },
   { key: "soccer_belgium_first_div", league: "Belgian Pro League" },
   { key: "soccer_saudi_arabia_pro_league", league: "Saudi Pro League" },
 ] as const;
 
-const REFRESH_SECONDS = 30 * 60 * 60;
+const REFRESH_SECONDS = 36 * 60 * 60;
 
 type RawOutcome = { name: string; price: number; point?: number };
 type RawEvent = {

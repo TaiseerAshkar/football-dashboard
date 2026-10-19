@@ -261,6 +261,8 @@ function OptionCard({
   builtAt,
   stake,
   onSwap,
+  open,
+  onToggle,
 }: {
   built: Built;
   index: number;
@@ -271,17 +273,52 @@ function OptionCard({
   builtAt: string;
   stake: number;
   onSwap: (legIndex: number) => void;
+  open: boolean;
+  onToggle: () => void;
 }) {
   const r = risk(built.chance);
   return (
     <article className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-card">
-      <div className="flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} option ${index + 1}`}
+        className="flex w-full items-center justify-between gap-2 text-left"
+      >
         <span className="text-xs font-semibold uppercase tracking-wide text-muted">
           Option {index + 1}
           <span className="ml-1.5 normal-case text-accent">· {built.name}</span>
         </span>
-        <span className={`text-sm font-semibold ${r.text}`}>{r.label}</span>
-      </div>
+        <span className="flex items-center gap-2">
+          <span className={`text-sm font-semibold ${r.text}`}>{r.label}</span>
+          <span className="grid h-7 w-7 place-items-center rounded-lg border border-line bg-surface-2 text-muted">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`transition-transform ${open ? "rotate-180" : ""}`}
+              aria-hidden
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </span>
+        </span>
+      </button>
+      {!open && (
+        <p className="mt-2 text-sm">
+          <b className="tabular-nums">x{built.odds.toFixed(2)}</b> · {(built.chance * 100).toFixed(1)}% to hit ·{" "}
+          {built.picks.length} {built.picks.length === 1 ? "leg" : "legs"}
+          {stake > 0 && <> · returns {(stake * built.odds).toFixed(2)}</>}
+        </p>
+      )}
+      {open && (
+        <>
       <p className="mt-1 text-xs text-muted">{built.blurb}</p>
 
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
@@ -379,6 +416,8 @@ function OptionCard({
           className="h-10 rounded-xl border border-line bg-surface text-sm font-semibold transition hover:border-accent hover:text-accent"
         />
       </div>
+        </>
+      )}
     </article>
   );
 }
@@ -643,6 +682,7 @@ export function ParlayBuilder({
   const [pinned, setPinned] = useState<string[]>([]);
   const [query, setQuery] = useState<{ pool: Leg[]; low: number; high: number; pinned: string[] } | null>(null);
   const [checking, setChecking] = useState(false);
+  const [open, setOpen] = useState<boolean[]>([true, true, true]);
   const checkedOnce = useRef(false);
 
   // Default range: today to a week from now (set after load so the server and
@@ -790,6 +830,7 @@ export function ParlayBuilder({
     }
     const out = build(pool, count, low, high, new Set(pins));
     setResults(out);
+    if (typeof out !== "string") setOpen(out.map(() => true)); // a fresh build starts with every option open
     setQuery(typeof out === "string" ? null : { pool, low, high, pinned: pins });
   }
 
@@ -1188,7 +1229,18 @@ export function ParlayBuilder({
 
       {built && (
         <div className="space-y-3">
-          <div className="grid gap-4 lg:grid-cols-3">
+          {built.length > 1 && (
+            <div className="flex justify-end lg:hidden">
+              <button
+                type="button"
+                onClick={() => setOpen((prev) => prev.map(() => !prev.every(Boolean)))}
+                className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-muted transition-colors hover:border-accent hover:text-accent"
+              >
+                {open.slice(0, built.length).every(Boolean) ? "Collapse all" : "Expand all"}
+              </button>
+            </div>
+          )}
+          <div className="grid items-start gap-4 lg:grid-cols-3">
             {built.map((b, i) => (
               <OptionCard
                 key={i}
@@ -1201,6 +1253,8 @@ export function ParlayBuilder({
                 builtAt={meta.fetchedAt ?? new Date().toISOString()}
                 stake={Number(stake) > 0 ? Number(stake) : 0}
                 onSwap={(legIndex) => swapLeg(i, legIndex)}
+                open={open[i] ?? true}
+                onToggle={() => setOpen((prev) => prev.map((v, k) => (k === i ? !v : v)))}
               />
             ))}
           </div>

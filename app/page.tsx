@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { RetryNotice } from "@/app/components/RetryNotice";
 import { StandingsTable } from "@/app/components/StandingsTable";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { buildFixtures, buildTeamInfos } from "@/lib/analysis";
@@ -15,9 +16,7 @@ async function Standings({ league }: { league: LeagueCode }) {
   ]);
   if (!standings.ok) {
     return (
-      <p className="text-red-600">
-        Could not load standings: {standings.error}
-      </p>
+      <RetryNotice message={`Could not load standings: ${standings.error}`} />
     );
   }
 
@@ -142,7 +141,7 @@ async function Leaders({ league }: { league: LeagueCode }) {
   const result = await getScorers(league);
   if (!result.ok) {
     return (
-      <p className="text-red-600">Could not load top players: {result.error}</p>
+      <RetryNotice message={`Could not load top players: ${result.error}`} />
     );
   }
   const byGoals = [...result.data]

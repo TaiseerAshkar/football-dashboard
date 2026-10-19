@@ -4,39 +4,39 @@ import { connection } from "next/server";
 export type Result<T> =
   { ok: true; data: T } | { ok: false; status: number; error: string };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // Server-only fetch to football-data.org. Never throws: returns a Result.
+// If the free plan's per-minute limit is hit and it resets within a few
+// seconds, wait and retry once. Otherwise fail fast (the page retries by itself).
 export async function apiGet(path: string): Promise<Result<any>> {
   const key = process.env.FOOTBALL_API_KEY;
-  if (!key)
-    return { ok: false, status: 500, error: "API key is not configured" };
+  if (!key) return { ok: false, status: 500, error: "API key is not configured" };
 
-  let res: Response;
-  try {
-    res = await fetch(`https://api.football-data.org/v4${path}`, {
-      headers: { "X-Auth-Token": key },
-    });
-  } catch {
-    return {
-      ok: false,
-      status: 502,
-      error: "Football data service is unreachable",
-    };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`https://api.football-data.org/v4${path}`, {
+        headers: { "X-Auth-Token": key },
+      });
+    } catch {
+      return { ok: false, status: 502, error: "Football data service is unreachable" };
+    }
+
+    if (res.status === 429) {
+      const reset = Number(res.headers.get("x-requestcounter-reset"));
+      if (attempt === 0 && reset > 0 && reset <= 8) {
+        await sleep((reset + 1) * 1000);
+        continue;
+      }
+      return { ok: false, status: 429, error: "Rate limit reached, retrying shortly" };
+    }
+    if (!res.ok) {
+      return { ok: false, status: 502, error: "Football data service returned an error" };
+    }
+    return { ok: true, data: await res.json() };
   }
-  if (res.status === 429) {
-    return {
-      ok: false,
-      status: 429,
-      error: "Rate limit reached, try again in a minute",
-    };
-  }
-  if (!res.ok) {
-    return {
-      ok: false,
-      status: 502,
-      error: "Football data service returned an error",
-    };
-  }
-  return { ok: true, data: await res.json() };
+  return { ok: false, status: 429, error: "Rate limit reached, retrying shortly" };
 }
 
 // apiGet, but cached in Next's shared data cache (it persists across all
@@ -160,8 +160,8 @@ export type Scorer = {
 // Top 50 scorers. Assist leaders are taken from this list too, so a player
 // with assists but very few goals could be missing (free-tier simplification).
 export async function getScorers(league: string): Promise<Result<Scorer[]>> {
-  // Scorer lists change slowly, so cache them for 30 minutes.
-  const r = await cachedGet(`/competitions/${league}/scorers?limit=50`, 1800);
+  // Scorer lists change slowly, so cache them for an hour.
+  const r = await cachedGet(`/competitions/${league}/scorers?limit=50`, 3600);
   if (!r.ok) return r;
   const scorers: Scorer[] = r.data.scorers.map((s: any) => ({
     name: s.player.name,

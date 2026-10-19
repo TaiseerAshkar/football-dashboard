@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { FavouriteCard } from "@/app/components/FavouriteCard";
 import { ProbBar } from "@/app/components/ProbBar";
 import { RetryNotice } from "@/app/components/RetryNotice";
 import { ListSkeleton, StoriesSkeleton, TableSkeleton } from "@/app/components/Skeletons";
@@ -287,6 +288,8 @@ async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: st
           </Link>
         ))}
       </nav>
+
+      <FavouriteCard />
 
       <section className="fade-up relative overflow-hidden rounded-3xl border border-line bg-surface p-5 shadow-card sm:p-8">
         <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />

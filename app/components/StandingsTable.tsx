@@ -6,6 +6,7 @@ import { FormBadges } from "@/app/components/FormBadges";
 import { ProbBar } from "@/app/components/ProbBar";
 import type { TeamInfo } from "@/lib/analysis";
 import type { Match } from "@/lib/football";
+import { useFavourite } from "@/lib/favourite";
 import { headToHead } from "@/lib/h2h";
 import { zoneFor, type ZoneKind, type Zones } from "@/lib/leagues";
 import type { LiveRow } from "@/lib/live";
@@ -296,6 +297,7 @@ export function StandingsTable({
   league: string;
 }) {
   const [openId, setOpenId] = useState<number | null>(null);
+  const fav = useFavourite();
   const legend = (["top", "mid", "bottom"] as const).flatMap((k) => (zones[k] ? [{ k, label: zones[k]!.label }] : []));
 
   return (
@@ -321,12 +323,13 @@ export function StandingsTable({
               const open = openId === row.team.id;
               const zone = zoneFor(row.position, rows.length, zones) ?? "none";
               const name = row.team.shortName ?? row.team.name;
+              const isFav = fav?.id === row.team.id;
               return (
                 <Fragment key={row.team.id}>
                   <tr
                     onClick={() => setOpenId(open ? null : row.team.id)}
                     className={`cursor-pointer border-t border-line transition-colors hover:bg-surface-2/60 ${
-                      open ? "bg-surface-2/60" : ""
+                      open ? "bg-surface-2/60" : isFav ? "bg-amber-400/10" : ""
                     }`}
                   >
                     <td className="py-3 pl-3 pr-1">
@@ -353,6 +356,11 @@ export function StandingsTable({
                         </span>
                         <span className="truncate sm:hidden">{name}</span>
                         <span className="hidden truncate sm:inline">{row.team.name}</span>
+                        {isFav && (
+                          <span className="shrink-0 text-amber-400" title="Your favourite team" aria-label="Your favourite team">
+                            ★
+                          </span>
+                        )}
                         {row.live && (
                           <span
                             title={`Live ${row.live.home ? "vs" : "@"} ${row.live.opponent}`}

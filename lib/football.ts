@@ -1,13 +1,9 @@
-import { cacheLife } from "next/cache";
+import { unstable_cache } from "next/cache";
 
 export type Result<T> =
   | { ok: true; data: T }
   | { ok: false; status: number; error: string };
 
-const FIVE_MIN = { stale: 300, revalidate: 300, expire: 3600 };
-// Scorer lists change slowly, so cache them longer to save API requests.
-const THIRTY_MIN = { stale: 1800, revalidate: 1800, expire: 7200 };
-const RETRY_SOON = { stale: 0, revalidate: 10, expire: 60 };
 
 // Server-only fetch to football-data.org. Never throws: returns a Result.
 export async function apiGet(path: string): Promise<Result<any>> {
@@ -29,6 +25,30 @@ export async function apiGet(path: string): Promise<Result<any>> {
     return { ok: false, status: 502, error: "Football data service returned an error" };
   }
   return { ok: true, data: await res.json() };
+}
+
+// apiGet, but cached in Next's shared data cache (it persists across all
+// serverless instances, unlike "use cache", so visitors don't each hit the API).
+// Failures are thrown inside the cache function so they are never cached.
+export async function cachedGet(path: string, revalidateSeconds: number): Promise<Result<any>> {
+  const run = unstable_cache(
+    async () => {
+      const r = await apiGet(path);
+      if (!r.ok) throw new Error(JSON.stringify(r));
+      return r.data;
+    },
+    ["football-data", path],
+    { revalidate: revalidateSeconds },
+  );
+  try {
+    return { ok: true, data: await run() };
+  } catch (e) {
+    try {
+      return JSON.parse((e as Error).message);
+    } catch {
+      return { ok: false, status: 502, error: "Football data service returned an error" };
+    }
+  }
 }
 
 export type Match = {
@@ -54,33 +74,21 @@ const toMatches = (raw: any[]): Match[] =>
 // Form, stats, predictions and fixtures are all computed from this, so we stay
 // far under the free 10 requests/minute limit.
 export async function getMatches(league: string): Promise<Result<Match[]>> {
-  "use cache";
-  cacheLife(FIVE_MIN);
-
-  const r = await apiGet(`/competitions/${league}/matches`);
-  if (!r.ok) {
-    cacheLife(RETRY_SOON);
-    return r;
-  }
+  const r = await cachedGet(`/competitions/${league}/matches`, 300);
+  if (!r.ok) return r;
   return { ok: true, data: toMatches(r.data.matches) };
 }
 
 // Finished matches from the previous two seasons, for head-to-head facts.
 // Old results never change, so this is cached for a day.
 export async function getHistory(league: string): Promise<Result<Match[]>> {
-  "use cache";
-  cacheLife({ stale: 86400, revalidate: 86400, expire: 172800 });
-
   const now = new Date();
   const startYear = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
 
   const all: Match[] = [];
   for (const season of [startYear - 1, startYear - 2]) {
-    const r = await apiGet(`/competitions/${league}/matches?season=${season}&status=FINISHED`);
-    if (!r.ok) {
-      cacheLife(RETRY_SOON);
-      return r;
-    }
+    const r = await cachedGet(`/competitions/${league}/matches?season=${season}&status=FINISHED`, 86400);
+    if (!r.ok) return r;
     all.push(...toMatches(r.data.matches));
   }
   return { ok: true, data: all };
@@ -97,14 +105,9 @@ export type Scorer = {
 // Top 50 scorers. Assist leaders are taken from this list too, so a player
 // with assists but very few goals could be missing (free-tier simplification).
 export async function getScorers(league: string): Promise<Result<Scorer[]>> {
-  "use cache";
-  cacheLife(THIRTY_MIN);
-
-  const r = await apiGet(`/competitions/${league}/scorers?limit=50`);
-  if (!r.ok) {
-    cacheLife(RETRY_SOON);
-    return r;
-  }
+  // Scorer lists change slowly, so cache them for 30 minutes.
+  const r = await cachedGet(`/competitions/${league}/scorers?limit=50`, 1800);
+  if (!r.ok) return r;
   const scorers: Scorer[] = r.data.scorers.map((s: any) => ({
     name: s.player.name,
     teamId: s.team.id,

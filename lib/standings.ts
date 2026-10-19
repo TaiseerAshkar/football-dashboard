@@ -1,5 +1,4 @@
-import { cacheLife } from "next/cache";
-import { apiGet } from "@/lib/football";
+import { cachedGet } from "@/lib/football";
 
 export type StandingRow = {
   position: number;
@@ -18,22 +17,14 @@ export type StandingsResult =
   | { ok: true; table: StandingRow[] }
   | { ok: false; status: number; error: string };
 
-// Cached for 5 minutes. Failures are returned (not thrown) so callers can show
-// a message, and they get a very short cache life so they're retried quickly.
+// Cached for 5 minutes (shared across server instances). Failures are
+// returned, not thrown, so callers can show a message.
 export async function getStandings(league: string): Promise<StandingsResult> {
-  "use cache";
-  cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
-
-  const fail = (status: number, error: string): StandingsResult => {
-    cacheLife({ stale: 0, revalidate: 10, expire: 60 });
-    return { ok: false, status, error };
-  };
-
-  const r = await apiGet(`/competitions/${league}/standings`);
-  if (!r.ok) return fail(r.status, r.error);
+  const r = await cachedGet(`/competitions/${league}/standings`, 300);
+  if (!r.ok) return r;
 
   // "TOTAL" is the full-season table (the API also returns HOME and AWAY).
   const total = r.data.standings?.find((s: { type: string }) => s.type === "TOTAL");
-  if (!total) return fail(502, "Unexpected response from football data service");
+  if (!total) return { ok: false, status: 502, error: "Unexpected response from football data service" };
   return { ok: true, table: total.table };
 }

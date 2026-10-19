@@ -64,13 +64,25 @@ async function Builder() {
 export default function ParlayPage() {
   return (
     <main className="mx-auto w-full max-w-[1600px] flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Parlay builder</h1>
-        <p className="mt-2 text-sm text-muted">
-          Pick how many games and the total odds you want. It builds three options from the matches in your date range
-          using real bookmaker odds, safest first, and rates the risk of each.
+      <section className="fade-up relative overflow-hidden rounded-3xl border border-line bg-surface p-5 shadow-card sm:p-8">
+        <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-accent/20 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-24 left-1/4 h-56 w-56 rounded-full bg-info/10 blur-3xl" />
+        <p className="relative text-xs font-semibold uppercase tracking-[0.22em] text-accent">Parlay builder</p>
+        <h1 className="relative mt-1.5 text-3xl font-extrabold tracking-tight sm:text-5xl">
+          Build a bet slip in <span className="text-gradient">seconds</span>
+        </h1>
+        <p className="relative mt-3 max-w-2xl text-sm text-muted">
+          Choose how many games and the total odds. It builds three different options from this week&apos;s matches
+          using real bookmaker prices, safest first, and rates the risk of each.
         </p>
-      </div>
+        <div className="relative mt-4 flex flex-wrap gap-2 text-xs font-medium">
+          {["Real bookmaker odds", "3 options", "Swap any leg", "Share a link"].map((t) => (
+            <span key={t} className="rounded-full bg-background/60 px-3 py-1.5 ring-1 ring-line backdrop-blur">
+              {t}
+            </span>
+          ))}
+        </div>
+      </section>
       <Suspense fallback={<ListSkeleton />}>
         <Builder />
       </Suspense>

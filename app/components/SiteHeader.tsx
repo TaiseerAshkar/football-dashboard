@@ -9,7 +9,8 @@ function PlainNav() {
   return (
     <nav className="flex items-center gap-1" aria-label="Main">
       <span className={link}>Tables</span>
-      <span className={link}>Parlay builder</span>
+      <span className={link}>Compare</span>
+      <span className={link}>Parlay</span>
     </nav>
   );
 }
@@ -21,7 +22,7 @@ export function SiteHeader() {
         <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-tight">
           <span
             aria-hidden
-            className="grid h-8 w-8 place-items-center rounded-lg bg-accent text-base text-white shadow-card"
+            className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-info text-base text-white shadow-card ring-1 ring-white/20"
           >
             ⚽
           </span>

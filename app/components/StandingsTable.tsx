@@ -29,11 +29,11 @@ const formatFull = (iso: string) =>
 const formatShort = (iso: string) =>
   new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
-const ZONE_BORDER: Record<ZoneKind | "none", string> = {
-  top: "border-l-good",
-  mid: "border-l-info",
-  bottom: "border-l-bad",
-  none: "border-l-transparent",
+const ZONE_CHIP: Record<ZoneKind | "none", string> = {
+  top: "bg-good/15 text-good",
+  mid: "bg-info/15 text-info",
+  bottom: "bg-bad/15 text-bad",
+  none: "text-muted",
 };
 const ZONE_DOT: Record<ZoneKind, string> = { top: "bg-good", mid: "bg-info", bottom: "bg-bad" };
 
@@ -300,7 +300,7 @@ export function StandingsTable({
 
   return (
     <div>
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+      <div className="fade-up overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
         <table className="w-full text-sm tabular-nums">
           <thead className="bg-surface-2/60 text-[11px] uppercase tracking-wide text-muted">
             <tr>
@@ -329,8 +329,10 @@ export function StandingsTable({
                       open ? "bg-surface-2/60" : ""
                     }`}
                   >
-                    <td className={`border-l-[3px] py-3 pl-3 pr-1 text-muted ${ZONE_BORDER[zone]}`}>
-                      {row.position}
+                    <td className="py-3 pl-3 pr-1">
+                      <span className={`grid h-6 w-6 place-items-center rounded-md text-xs font-bold ${ZONE_CHIP[zone]}`}>
+                        {row.position}
+                      </span>
                     </td>
                     <td className="w-full max-w-0 px-2">
                       <button
@@ -338,15 +340,17 @@ export function StandingsTable({
                         aria-expanded={open}
                         className="flex w-full items-center gap-2.5 text-left font-medium"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={row.team.crest}
-                          alt=""
-                          width={24}
-                          height={24}
-                          loading="lazy"
-                          className="h-6 w-6 shrink-0 object-contain"
-                        />
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white p-1 shadow-sm ring-1 ring-black/5">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={row.team.crest}
+                            alt=""
+                            width={24}
+                            height={24}
+                            loading="lazy"
+                            className="h-full w-full object-contain"
+                          />
+                        </span>
                         <span className="truncate sm:hidden">{name}</span>
                         <span className="hidden truncate sm:inline">{row.team.name}</span>
                         {row.live && (

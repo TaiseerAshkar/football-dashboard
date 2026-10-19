@@ -242,11 +242,13 @@ function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<st
 const field =
   "h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none transition-colors focus:border-accent";
 
-function Tile({ label, value }: { label: string; value: string }) {
+// The dashed tear line of a ticket, with a notch punched out of each side.
+function TicketCut() {
   return (
-    <div className="rounded-xl bg-surface-2 p-2.5">
-      <div className="text-[11px] leading-tight text-muted">{label}</div>
-      <div className="mt-1 text-lg font-semibold tabular-nums">{value}</div>
+    <div className="relative -mx-4 my-3.5" aria-hidden>
+      <div className="mx-4 border-t-2 border-dashed border-line" />
+      <span className="absolute left-0 top-0 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-line bg-background" />
+      <span className="absolute right-0 top-0 h-5 w-5 -translate-y-1/2 translate-x-1/2 rounded-full border border-line bg-background" />
     </div>
   );
 }
@@ -278,7 +280,11 @@ function OptionCard({
 }) {
   const r = risk(built.chance);
   return (
-    <article className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-card">
+    <article
+      className="card-lift fade-up relative flex flex-col rounded-2xl border border-line bg-surface p-4 pt-5 shadow-card"
+      style={{ animationDelay: `${index * 90}ms` }}
+    >
+      <span aria-hidden className={`absolute inset-x-6 top-0 h-1 rounded-b-full ${r.bar}`} />
       <button
         type="button"
         onClick={onToggle}
@@ -328,10 +334,21 @@ function OptionCard({
         />
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <Tile label="Total odds" value={`x${built.odds.toFixed(2)}`} />
-        <Tile label="All hit" value={`${(built.chance * 100).toFixed(1)}%`} />
-        <Tile label="Avg leg" value={`${(built.avgLeg * 100).toFixed(0)}%`} />
+      <div className="mt-4 flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Total odds</div>
+          <div className="text-gradient text-5xl font-extrabold leading-none tracking-tight tabular-nums">
+            x{built.odds.toFixed(2)}
+          </div>
+        </div>
+        <div className="space-y-0.5 text-right text-xs text-muted">
+          <div>
+            <b className="text-base tabular-nums text-foreground">{(built.chance * 100).toFixed(1)}%</b> all hit
+          </div>
+          <div>
+            <b className="tabular-nums text-foreground">{(built.avgLeg * 100).toFixed(0)}%</b> avg leg
+          </div>
+        </div>
       </div>
       {!built.close && (
         <p className="mt-2 text-xs text-muted">Closest I could get to {targetLabel} with these settings.</p>
@@ -343,7 +360,8 @@ function OptionCard({
         </p>
       )}
 
-      <ol className="mt-3 divide-y divide-line text-sm">
+      <TicketCut />
+      <ol className="divide-y divide-line text-sm">
         {built.picks.map((p, i) => (
           <li key={`${p.matchId}-${p.pick}`} className="py-2.5">
             <div className="flex items-start gap-2.5">

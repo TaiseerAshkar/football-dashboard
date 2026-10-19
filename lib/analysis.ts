@@ -325,3 +325,16 @@ export function buildFixtures(matches: Match[]): Fixture[] {
       };
     });
 }
+
+// Estimated result if `homeId` hosts `awayId`, from this season's results.
+export function matchup(matches: Match[], homeId: number, awayId: number) {
+  const p = predict(makeStrengths(matches.filter((m) => m.finished)), homeId, awayId);
+  return {
+    homeWin: pct(p.homeWin),
+    draw: pct(p.draw),
+    awayWin: pct(p.awayWin),
+    over25: pct(p.over25),
+    btts: pct(p.btts),
+    score: `${p.bestScore[0]}-${p.bestScore[1]}`,
+  };
+}

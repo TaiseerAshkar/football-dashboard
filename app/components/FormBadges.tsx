@@ -16,7 +16,7 @@ export function FormBadges({ games, size = "md" }: { games: Game[]; size?: "sm" 
         <span
           key={i}
           title={`${g.home ? "vs" : "@"} ${g.opponent} ${g.gf}-${g.ga}`}
-          className={`inline-flex items-center justify-center rounded-[5px] font-bold ${box} ${COLORS[g.result]}`}
+          className={`inline-flex items-center justify-center rounded-[5px] font-bold shadow-sm ring-1 ring-black/10 dark:ring-white/10 ${box} ${COLORS[g.result]}`}
         >
           {g.result}
         </span>

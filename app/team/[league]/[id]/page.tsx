@@ -136,7 +136,7 @@ async function TeamDetails({ params }: { params: Promise<{ league: string; id: s
   const t = data.total;
 
   return (
-    <div className="space-y-6">
+    <div className="fade-up space-y-6">
       <header className="flex flex-wrap items-center gap-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={row.team.crest} alt="" width={64} height={64} className="h-16 w-16 object-contain" />
@@ -146,7 +146,12 @@ async function TeamDetails({ params }: { params: Promise<{ league: string; id: s
             {lg.name} · position <b className="text-foreground">{row.position}</b> · <b className="text-foreground">{row.points}</b> pts
           </p>
         </div>
-        <FormBadges games={data.games.slice(0, 5)} />
+        <div className="flex flex-col items-end gap-2">
+          <FormBadges games={data.games.slice(0, 5)} />
+          <Link href={`/compare?league=${lg.code}&a=${teamId}`} className="text-sm font-medium text-accent hover:underline">
+            Compare with another team →
+          </Link>
+        </div>
       </header>
 
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">

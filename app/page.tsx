@@ -2,13 +2,14 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ProbBar } from "@/app/components/ProbBar";
 import { RetryNotice } from "@/app/components/RetryNotice";
-import { ListSkeleton, TableSkeleton } from "@/app/components/Skeletons";
+import { ListSkeleton, StoriesSkeleton, TableSkeleton } from "@/app/components/Skeletons";
 import { StandingsTable } from "@/app/components/StandingsTable";
 import { buildFixtures, buildTeamInfos } from "@/lib/analysis";
-import { getLiveAwareMatches, getScorers, type Scorer } from "@/lib/football";
+import { getLiveAwareMatches, getMatches, getScorers, type Scorer } from "@/lib/football";
 import { LEAGUES, parseLeague, type LeagueCode } from "@/lib/leagues";
 import { withLive } from "@/lib/live";
 import { getStandings } from "@/lib/standings";
+import { buildStories, leagueStats, type Story } from "@/lib/stories";
 
 const card = "rounded-2xl border border-line bg-surface shadow-card";
 
@@ -50,6 +51,78 @@ async function Standings({ league }: { league: LeagueCode }) {
   );
 }
 
+// ---- the four quick numbers in the hero card ----
+async function Pulse({ league }: { league: LeagueCode }) {
+  const matches = await getMatches(league);
+  const stats = matches.ok ? leagueStats(matches.data) : null;
+  if (!stats) return null;
+  const tiles = [
+    { label: "Matches played", value: String(stats.played) },
+    { label: "Goals per game", value: stats.goalsPerGame.toFixed(2) },
+    { label: "Home wins", value: `${stats.homeWins}%` },
+    { label: "Over 2.5 goals", value: `${stats.over25}%` },
+  ];
+  return (
+    <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+      {tiles.map((t) => (
+        <div key={t.label} className="rounded-2xl bg-background/60 px-3.5 py-3 ring-1 ring-line backdrop-blur">
+          <div className="text-2xl font-bold tabular-nums tracking-tight sm:text-3xl">{t.value}</div>
+          <div className="mt-0.5 text-xs text-muted">{t.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- auto-written stories ----
+const TONE: Record<Story["tone"], { bar: string; chip: string }> = {
+  good: { bar: "before:bg-good", chip: "bg-good/15" },
+  bad: { bar: "before:bg-bad", chip: "bg-bad/15" },
+  info: { bar: "before:bg-info", chip: "bg-info/15" },
+};
+
+async function Stories({ league }: { league: LeagueCode }) {
+  const [standings, matches] = await Promise.all([getStandings(league), getMatches(league)]);
+  if (!standings.ok || !matches.ok) return null;
+  const stories = buildStories(matches.data, standings.table);
+  if (stories.length === 0) return null;
+
+  return (
+    <section aria-label="Stories">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">Stories</h2>
+        <p className="text-xs text-muted">Written automatically from the latest results</p>
+      </div>
+      <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:grid sm:grid-cols-2 sm:overflow-visible sm:px-0 lg:grid-cols-4">
+        {stories.map((s, i) => {
+          const body = (
+            <>
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg ${TONE[s.tone].chip}`}>
+                {s.icon}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold leading-snug">{s.title}</span>
+                <span className="mt-0.5 block text-xs leading-snug text-muted">{s.detail}</span>
+              </span>
+            </>
+          );
+          const cls = `card-lift fade-up relative flex min-w-[15.5rem] snap-start items-start gap-3 overflow-hidden rounded-2xl border border-line bg-surface p-3.5 pl-4 shadow-card before:absolute before:inset-y-0 before:left-0 before:w-1 sm:min-w-0 ${TONE[s.tone].bar}`;
+          const style = { animationDelay: `${i * 50}ms` };
+          return s.teamId ? (
+            <Link key={s.id} href={`/team/${league}/${s.teamId}`} className={cls} style={style}>
+              {body}
+            </Link>
+          ) : (
+            <div key={s.id} className={cls} style={style}>
+              {body}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 const kickoffTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
 const kickoffDay = (iso: string) =>
@@ -66,7 +139,7 @@ async function Fixtures({ league }: { league: LeagueCode }) {
     <section className="mt-8 space-y-6">
       {liveNow.length > 0 && (
         <div>
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold tracking-tight">
             <span className="h-2 w-2 animate-pulse rounded-full bg-bad" />
             Live now
           </h2>
@@ -89,10 +162,10 @@ async function Fixtures({ league }: { league: LeagueCode }) {
 
       {fixtures.length > 0 && (
         <div>
-          <h2 className="mb-3 text-lg font-semibold">Next fixtures</h2>
-          <ul className={`${card} divide-y divide-line`}>
+          <h2 className="mb-3 text-lg font-semibold tracking-tight">Next fixtures</h2>
+          <ul className={`${card} divide-y divide-line overflow-hidden`}>
             {fixtures.map((f) => (
-              <li key={f.id} className="flex gap-3 px-4 py-3.5">
+              <li key={f.id} className="flex gap-3 px-4 py-3.5 transition-colors hover:bg-surface-2/50">
                 <div className="w-14 shrink-0 text-center leading-tight">
                   <div className="text-sm font-semibold tabular-nums">{kickoffTime(f.date)}</div>
                   <div className="mt-0.5 text-[11px] text-muted">{kickoffDay(f.date)}</div>
@@ -126,6 +199,13 @@ async function Fixtures({ league }: { league: LeagueCode }) {
   );
 }
 
+// gold, silver and bronze for the top three
+const MEDAL = [
+  "bg-amber-400 text-amber-950",
+  "bg-slate-300 text-slate-800",
+  "bg-orange-300 text-orange-950",
+];
+
 function TopFive({
   title,
   players,
@@ -136,17 +216,19 @@ function TopFive({
   stat: "goals" | "assists";
 }) {
   return (
-    <section className={`${card} p-4`}>
+    <section className={`${card} fade-up p-4`}>
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{title}</h2>
       <ol className="space-y-1">
         {players.map((p, i) => (
           <li
             key={p.name}
-            className={`flex items-center gap-3 rounded-lg px-2 py-2 ${i === 0 ? "bg-accent-soft" : ""}`}
+            className={`flex items-center gap-3 rounded-xl px-2 py-2 transition-colors ${
+              i === 0 ? "bg-accent-soft" : "hover:bg-surface-2/60"
+            }`}
           >
             <span
               className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                i === 0 ? "bg-accent text-white" : "bg-surface-2 text-muted"
+                MEDAL[i] ?? "bg-surface-2 text-muted"
               }`}
             >
               {i + 1}
@@ -195,10 +277,10 @@ async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: st
             key={l.code}
             href={`/?league=${l.code}`}
             aria-current={l.code === league ? "page" : undefined}
-            className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
+            className={`shrink-0 rounded-full border px-4 py-2 text-sm font-medium transition-all ${
               l.code === league
-                ? "border-accent bg-accent text-white shadow-card"
-                : "border-line bg-surface text-muted hover:text-foreground"
+                ? "border-accent bg-accent text-white shadow-[0_8px_24px_-8px_var(--accent)]"
+                : "border-line bg-surface/70 text-muted backdrop-blur hover:border-accent/50 hover:text-foreground"
             }`}
           >
             {l.name}
@@ -206,7 +288,35 @@ async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: st
         ))}
       </nav>
 
-      <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{name}</h1>
+      <section className="fade-up relative overflow-hidden rounded-3xl border border-line bg-surface p-5 shadow-card sm:p-8">
+        <div aria-hidden className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
+        <div aria-hidden className="pointer-events-none absolute -bottom-20 left-1/3 h-56 w-56 rounded-full bg-info/10 blur-3xl" />
+        <svg
+          aria-hidden
+          viewBox="0 0 220 220"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="pointer-events-none absolute -bottom-20 -right-12 h-72 w-72 text-foreground/[.07]"
+        >
+          <circle cx="110" cy="110" r="70" />
+          <circle cx="110" cy="110" r="5" fill="currentColor" />
+          <path d="M110 20v180M20 110h180" />
+          <rect x="62" y="20" width="96" height="40" />
+          <rect x="62" y="160" width="96" height="40" />
+        </svg>
+        <p className="relative text-xs font-semibold uppercase tracking-[0.22em] text-accent">League table</p>
+        <h1 className="relative mt-1.5 text-4xl font-extrabold tracking-tight sm:text-6xl">{name}</h1>
+        <div className="relative">
+          <Suspense fallback={null}>
+            <Pulse league={league} />
+          </Suspense>
+        </div>
+      </section>
+
+      <Suspense fallback={<StoriesSkeleton />}>
+        <Stories league={league} />
+      </Suspense>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-8">
         <div className="min-w-0">

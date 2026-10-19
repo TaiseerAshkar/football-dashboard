@@ -254,7 +254,7 @@ async function Leaders({ league }: { league: LeagueCode }) {
   const byAssists = [...result.data].sort((a, b) => b.assists - a.assists).slice(0, 5);
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:grid-cols-1">
       <TopFive title="Top scorers" players={byGoals} stat="goals" />
       <TopFive title="Top assisters" players={byAssists} stat="assists" />
     </div>

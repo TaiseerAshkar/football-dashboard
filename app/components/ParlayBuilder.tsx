@@ -26,6 +26,9 @@ type Built = {
   tried: string[]; // bets already offered for a swap, so Swap never repeats itself
 };
 
+// 1,234.50 style, so big payouts stay readable and compact
+const fmt2 = (n: number) => n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const TARGETS = [2, 3, 5, 10, 20, 50, 100, 150, 300];
 const MAX_GAMES = 30;
 // Extra prices cost 1 credit per match, so only the most promising matches get them.
@@ -320,7 +323,7 @@ function OptionCard({
         <p className="mt-2 text-sm">
           <b className="tabular-nums">x{built.odds.toFixed(2)}</b> · {(built.chance * 100).toFixed(1)}% to hit ·{" "}
           {built.picks.length} {built.picks.length === 1 ? "leg" : "legs"}
-          {stake > 0 && <> · returns {(stake * built.odds).toFixed(2)}</>}
+          {stake > 0 && <> · returns {fmt2(stake * built.odds)}</>}
         </p>
       )}
       {open && (
@@ -334,21 +337,23 @@ function OptionCard({
         />
       </div>
 
-      <div className="mt-4 flex items-end justify-between gap-3">
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
         <div>
           <div className="text-[11px] font-medium uppercase tracking-wide text-muted">Total odds</div>
-          <div className="text-gradient text-5xl font-extrabold leading-none tracking-tight tabular-nums">
+          <div
+            className={`text-gradient font-extrabold leading-none tracking-tight tabular-nums ${built.odds >= 100 ? "text-4xl" : "text-5xl"}`}
+          >
             x{built.odds.toFixed(2)}
           </div>
         </div>
         {stake > 0 ? (
-          <div className="rounded-xl bg-accent-soft px-3 py-2 text-right">
+          <div className="max-w-full rounded-xl bg-accent-soft px-3 py-2 text-right">
             <div className="text-[11px] font-medium text-muted">Stake {stake} returns</div>
             <div className="text-2xl font-extrabold leading-tight tabular-nums text-accent">
-              {(stake * built.odds).toFixed(2)}
+              {fmt2(stake * built.odds)}
             </div>
             <div className="text-[11px] font-semibold tabular-nums text-good">
-              profit +{(stake * built.odds - stake).toFixed(2)}
+              profit +{fmt2(stake * built.odds - stake)}
             </div>
           </div>
         ) : (
@@ -495,7 +500,7 @@ const LEG_MARK: Record<LegResult, { icon: string; style: string; tip: string }> 
   unknown: { icon: "?", style: "text-warn", tip: "Can't be checked automatically, mark it yourself" },
 };
 
-const money = (n: number) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(2)}`;
+const money = (n: number) => `${n < 0 ? "−" : "+"}${fmt2(Math.abs(n))}`;
 
 function SavedList({
   list,
@@ -554,7 +559,7 @@ function SavedList({
           {checking ? "Checking..." : "Check results"}
         </button>
       </div>
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-3">
         {list.map((p) => {
           const res = p.results;
           const legWon = res?.filter((r) => r === "won").length ?? 0;
@@ -591,7 +596,7 @@ function SavedList({
 
               {p.stake ? (
                 <p className="mt-2 text-sm">
-                  Stake <b>{p.stake}</b> → returns <b>{(p.stake * p.odds).toFixed(2)}</b>
+                  Stake <b>{p.stake}</b> → returns <b>{fmt2(p.stake * p.odds)}</b>
                   {p.status === "won" && (
                     <b className="ml-2 text-good">{money(p.stake * (p.odds - 1))}</b>
                   )}
@@ -995,7 +1000,7 @@ export function ParlayBuilder({
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block text-muted">Number of games</span>
             <select value={countPreset} onChange={(e) => setCountPreset(e.target.value)} className={field}>
@@ -1261,7 +1266,7 @@ export function ParlayBuilder({
               </button>
             </div>
           )}
-          <div className="grid items-start gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 lg:grid-cols-3">
             {built.map((b, i) => (
               <OptionCard
                 key={i}

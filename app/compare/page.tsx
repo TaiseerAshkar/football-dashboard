@@ -167,7 +167,7 @@ async function Compare({ searchParams }: { searchParams: Search }) {
 
       <section className={card}>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted">Predicted result</h2>
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 md:grid-cols-2">
           {scenarios.map((s) => (
             <div key={s.title}>
               <p className="mb-2 text-sm font-semibold">{s.title}</p>

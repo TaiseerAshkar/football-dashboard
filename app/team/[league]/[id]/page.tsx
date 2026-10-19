@@ -42,14 +42,14 @@ function SplitRow({ label, s }: { label: string; s: Split }) {
   return (
     <tr className="border-t border-line">
       <td className="py-2.5 pr-3 font-medium">{label}</td>
-      <td className="px-2 text-center">{s.played}</td>
-      <td className="px-2 text-center">{s.won}</td>
-      <td className="px-2 text-center">{s.draw}</td>
-      <td className="px-2 text-center">{s.lost}</td>
-      <td className="px-2 text-center">
+      <td className="px-1.5 text-center sm:px-2">{s.played}</td>
+      <td className="px-1.5 text-center sm:px-2">{s.won}</td>
+      <td className="px-1.5 text-center sm:px-2">{s.draw}</td>
+      <td className="px-1.5 text-center sm:px-2">{s.lost}</td>
+      <td className="px-1.5 text-center sm:px-2">
         {s.gf}:{s.ga}
       </td>
-      <td className="px-2 text-center font-semibold">{perGame(s.points, s.played)}</td>
+      <td className="px-1.5 text-center sm:px-2 font-semibold">{perGame(s.points, s.played)}</td>
     </tr>
   );
 }
@@ -141,12 +141,12 @@ async function TeamDetails({ params }: { params: Promise<{ league: string; id: s
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={row.team.crest} alt="" width={64} height={64} className="h-16 w-16 object-contain" />
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{row.team.name}</h1>
+          <h1 className="text-xl font-semibold leading-tight tracking-tight sm:text-3xl">{row.team.name}</h1>
           <p className="mt-1 text-sm text-muted">
             {lg.name} · position <b className="text-foreground">{row.position}</b> · <b className="text-foreground">{row.points}</b> pts
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:items-end">
           <FormBadges games={data.games.slice(0, 5)} />
           <Link href={`/compare?league=${lg.code}&a=${teamId}`} className="text-sm font-medium text-accent hover:underline">
             Compare with another team →
@@ -166,7 +166,7 @@ async function TeamDetails({ params }: { params: Promise<{ league: string; id: s
       </section>
 
       {data.games.length > 0 && (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
           <section className={card}>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Last 10 results</h2>
             <ResultsStrip games={data.games} />
@@ -178,19 +178,19 @@ async function TeamDetails({ params }: { params: Promise<{ league: string; id: s
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-2">
         <section className={card}>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Home and away</h2>
           <table className="w-full text-sm tabular-nums">
             <thead className="text-[11px] uppercase tracking-wide text-muted">
               <tr>
                 <th className="pb-2 pr-3 text-left font-medium"> </th>
-                <th className="px-2 text-center font-medium">P</th>
-                <th className="px-2 text-center font-medium">W</th>
-                <th className="px-2 text-center font-medium">D</th>
-                <th className="px-2 text-center font-medium">L</th>
-                <th className="px-2 text-center font-medium">Goals</th>
-                <th className="px-2 text-center font-medium">Pts/game</th>
+                <th className="px-1.5 text-center sm:px-2 font-medium">P</th>
+                <th className="px-1.5 text-center sm:px-2 font-medium">W</th>
+                <th className="px-1.5 text-center sm:px-2 font-medium">D</th>
+                <th className="px-1.5 text-center sm:px-2 font-medium">L</th>
+                <th className="px-1.5 text-center sm:px-2 font-medium">Goals</th>
+                <th className="px-1.5 text-center sm:px-2 font-medium">Pts/g</th>
               </tr>
             </thead>
             <tbody>
@@ -223,7 +223,7 @@ async function TeamDetails({ params }: { params: Promise<{ league: string; id: s
       {players.length > 0 && (
         <section className={card}>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Top scorers in this competition</h2>
-          <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+          <ol className="grid grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2 lg:grid-cols-5">
             {players.map((p) => (
               <li key={p.name} className="rounded-xl bg-surface-2 p-3">
                 <div className="truncate text-sm font-medium">{p.name}</div>

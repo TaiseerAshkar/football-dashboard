@@ -221,7 +221,7 @@ function TeamPanel({ info, teamId, name, league }: { info: TeamInfo; teamId: num
         </Card>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
         {next && (
           <Card title={`Head-to-head at ${next.home ? "home" : "their ground"}`}>
             <HeadToHead
@@ -261,7 +261,7 @@ function TeamPanel({ info, teamId, name, league }: { info: TeamInfo; teamId: num
         </div>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
         <section className="rounded-xl border border-good/30 bg-good/5 p-4">
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-good">
             Pros · reasons to back them

@@ -39,7 +39,7 @@ export function ComparePicker({
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto_1fr] sm:items-end">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[1fr_1fr_auto_1fr] sm:items-end">
       <label className="block text-sm font-medium">
         <span className="mb-1.5 block text-muted">League</span>
         <select value={league} onChange={(e) => go(e.target.value)} className={select}>

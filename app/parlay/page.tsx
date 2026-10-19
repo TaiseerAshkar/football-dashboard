@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ParlayBuilder } from "@/app/components/ParlayBuilder";
 import { RetryNotice } from "@/app/components/RetryNotice";
-import { ThemeToggle } from "@/app/components/ThemeToggle";
+import { ListSkeleton } from "@/app/components/Skeletons";
 import { buildLegs } from "@/lib/analysis";
 import { getMatches } from "@/lib/football";
 import { LEAGUES } from "@/lib/leagues";
@@ -24,26 +23,24 @@ async function Builder() {
   const failed = results.filter((r) => !r.result.ok).map((r) => r.league.name);
 
   return (
-    <>
-      {failed.length > 0 && (
-        <RetryNotice message={`Could not load ${failed.join(", ")}`} />
-      )}
+    <div className="space-y-6">
+      {failed.length > 0 && <RetryNotice message={`Could not load ${failed.join(", ")}`} />}
       <ParlayBuilder legs={legs} />
-    </>
+    </div>
   );
 }
 
 export default function ParlayPage() {
   return (
-    <main className="mx-auto max-w-3xl space-y-6 p-4 sm:p-8">
-      <div className="flex items-center justify-between gap-2">
-        <Link href="/" className="text-sm hover:underline">
-          ← Back to tables
-        </Link>
-        <ThemeToggle />
+    <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Parlay builder</h1>
+        <p className="mt-2 text-sm text-muted">
+          Pick how many games and the total odds you want. It builds a combination from this
+          week&apos;s matches across all leagues and rates the risk.
+        </p>
       </div>
-      <h1 className="text-2xl font-semibold">Parlay builder</h1>
-      <Suspense fallback={<p>Loading matches...</p>}>
+      <Suspense fallback={<ListSkeleton />}>
         <Builder />
       </Suspense>
     </main>

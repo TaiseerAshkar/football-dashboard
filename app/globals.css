@@ -4,25 +4,83 @@
    or by the system preference on first visit; see layout.tsx). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Design tokens. Every color in the UI comes from here. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f4f6f8;
+  --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-2: #f1f5f9;
+  --line: #e2e8f0;
+  --muted: #64748b;
+  --accent: #059669;
+  --accent-soft: #d1fae5;
+  --good: #16a34a;
+  --bad: #dc2626;
+  --warn: #d97706;
+  --info: #2563eb;
+  --shadow: 0 1px 2px rgb(15 23 42 / 0.05), 0 4px 16px rgb(15 23 42 / 0.04);
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  color-scheme: dark;
+  --background: #090d12;
+  --foreground: #e8edf3;
+  --surface: #11171f;
+  --surface-2: #18202b;
+  --line: #232d3a;
+  --muted: #8b9bb0;
+  --accent: #34d399;
+  --accent-soft: #0f3a2c;
+  --good: #22c55e;
+  --bad: #f87171;
+  --warn: #fbbf24;
+  --info: #60a5fa;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  --color-info: var(--info);
+  --shadow-card: var(--shadow);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

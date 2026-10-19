@@ -19,10 +19,10 @@ const formatKickoff = (iso: string) =>
   });
 
 function risk(chance: number) {
-  if (chance >= 0.4) return { label: "Low risk", color: "text-green-600" };
-  if (chance >= 0.15) return { label: "Medium risk", color: "text-yellow-600" };
-  if (chance >= 0.05) return { label: "High risk", color: "text-orange-600" };
-  return { label: "Very high risk", color: "text-red-600" };
+  if (chance >= 0.4) return { label: "Low risk", text: "text-good", bar: "bg-good" };
+  if (chance >= 0.15) return { label: "Medium risk", text: "text-warn", bar: "bg-warn" };
+  if (chance >= 0.05) return { label: "High risk", text: "text-bad", bar: "bg-bad" };
+  return { label: "Very high risk", text: "text-bad", bar: "bg-bad" };
 }
 
 const shuffle = <T,>(xs: T[]) => {
@@ -67,7 +67,9 @@ function build(legs: Leg[], n: number, target: number): Built | string {
       const i = Math.floor(Math.random() * n);
       const used = new Set(sel.filter((_, k) => k !== i).map((p) => p.matchId));
       const candidates = all.filter((p) => !used.has(p.matchId));
-      const trial = sel.map((p, k) => (k === i ? candidates[Math.floor(Math.random() * candidates.length)] : p));
+      const trial = sel.map((p, k) =>
+        k === i ? candidates[Math.floor(Math.random() * candidates.length)] : p,
+      );
       // also try the single best fix for this slot
       const others = sel.reduce((s, p, k) => (k === i ? s : s + Math.log(p.odds)), 0);
       const need = Math.log(target) - others;
@@ -93,6 +95,18 @@ function build(legs: Leg[], n: number, target: number): Built | string {
   return { picks, odds, chance, avgLeg, close: Math.abs(Math.log(odds / target)) <= 0.15 };
 }
 
+const field =
+  "h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm outline-none transition-colors focus:border-accent";
+
+function Tile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-surface-2 p-3">
+      <div className="text-[11px] text-muted">{label}</div>
+      <div className="mt-1 text-xl font-semibold tabular-nums">{value}</div>
+    </div>
+  );
+}
+
 export function ParlayBuilder({ legs }: { legs: Leg[] }) {
   const [count, setCount] = useState(5);
   const [preset, setPreset] = useState("5");
@@ -107,100 +121,117 @@ export function ParlayBuilder({ legs }: { legs: Leg[] }) {
     setResult(build(legs, count, target));
   }
 
-  const selectClass = "rounded border bg-transparent px-2 py-1";
+  const built = result && typeof result !== "string" ? result : null;
+  const r = built ? risk(built.chance) : null;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-4 text-sm">
-        <label className="flex flex-col gap-1">
-          Number of games (legs)
-          <select
-            value={count}
-            onChange={(e) => setCount(Number(e.target.value))}
-            className={selectClass}
+      <section className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+        <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <label className="block text-sm font-medium">
+            <span className="mb-1.5 block text-muted">Number of games</span>
+            <select value={count} onChange={(e) => setCount(Number(e.target.value))} className={field}>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>
+                  {n} {n === 1 ? "game" : "games"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
+            <span className="mb-1.5 block text-muted">Desired total odds</span>
+            <select value={preset} onChange={(e) => setPreset(e.target.value)} className={field}>
+              {TARGETS.map((t) => (
+                <option key={t} value={t}>
+                  x{t}
+                </option>
+              ))}
+              <option value="custom">Custom...</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={run}
+            className="h-11 rounded-xl bg-accent px-6 text-sm font-semibold text-white transition active:scale-[.98] hover:opacity-90"
           >
-            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n} className="text-black">
-                {n} {n === 1 ? "game" : "games"}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          Desired total odds
-          <select value={preset} onChange={(e) => setPreset(e.target.value)} className={selectClass}>
-            {TARGETS.map((t) => (
-              <option key={t} value={t} className="text-black">
-                x{t}
-              </option>
-            ))}
-            <option value="custom" className="text-black">
-              Custom...
-            </option>
-          </select>
-        </label>
+            {built ? "Build another" : "Build parlay"}
+          </button>
+        </div>
         {preset === "custom" && (
-          <label className="flex flex-col gap-1">
-            Custom odds
+          <label className="mt-4 block max-w-[12rem] text-sm font-medium">
+            <span className="mb-1.5 block text-muted">Custom odds</span>
             <input
               type="number"
+              inputMode="decimal"
               min="1.1"
               step="0.1"
               value={custom}
               onChange={(e) => setCustom(e.target.value)}
-              className={`${selectClass} w-24`}
+              placeholder="e.g. 7.5"
+              className={field}
             />
           </label>
         )}
-        <button
-          type="button"
-          onClick={run}
-          className="rounded-full bg-foreground px-4 py-1.5 text-background"
-        >
-          {result && typeof result !== "string" ? "Build another" : "Build parlay"}
-        </button>
-      </div>
+      </section>
 
-      {typeof result === "string" && <p className="text-red-600">{result}</p>}
+      {typeof result === "string" && (
+        <p className="rounded-xl border border-bad/30 bg-bad/10 px-4 py-3 text-sm text-bad">{result}</p>
+      )}
 
-      {result && typeof result !== "string" && (
-        <section className="space-y-3">
-          <div className="rounded bg-black/[.04] p-4 dark:bg-white/[.06]">
-            <p className={`text-xl font-semibold ${risk(result.chance).color}`}>
-              {risk(result.chance).label}
-            </p>
-            <p className="mt-1 text-sm">
-              {result.picks.length} {result.picks.length === 1 ? "leg" : "legs"} · combined odds{" "}
-              <b>x{result.odds.toFixed(2)}</b> · estimated chance all hit{" "}
-              <b>{(result.chance * 100).toFixed(1)}%</b> · average leg{" "}
-              {(result.avgLeg * 100).toFixed(0)}%
-            </p>
-            {!result.close && (
-              <p className="mt-1 text-sm text-zinc-500">
-                Closest I could get to x{target} with the matches available this week.
+      {built && r && (
+        <section className="space-y-4">
+          <div className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className={`text-2xl font-semibold tracking-tight ${r.text}`}>{r.label}</p>
+              <p className="text-sm text-muted">
+                {built.picks.length} {built.picks.length === 1 ? "leg" : "legs"}
+              </p>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className={`h-full rounded-full ${r.bar}`}
+                style={{ width: `${Math.max(2, Math.min(100, built.chance * 100))}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-muted">Estimated chance that every leg hits</p>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <Tile label="Combined odds" value={`x${built.odds.toFixed(2)}`} />
+              <Tile label="Chance all hit" value={`${(built.chance * 100).toFixed(1)}%`} />
+              <Tile label="Average leg" value={`${(built.avgLeg * 100).toFixed(0)}%`} />
+            </div>
+            {!built.close && (
+              <p className="mt-3 text-sm text-muted">
+                Closest I could get to x{target} with this week&apos;s matches.
               </p>
             )}
           </div>
 
-          <ul className="text-sm">
-            {result.picks.map((p) => (
-              <li key={p.matchId} className="border-b py-2">
-                <div className="flex flex-wrap justify-between gap-x-4">
-                  <span className="font-medium">{p.pick}</span>
-                  <span className="font-semibold">
-                    {p.odds.toFixed(2)} ({(p.prob * 100).toFixed(0)}%)
-                  </span>
+          <ol className="space-y-2">
+            {built.picks.map((p, i) => (
+              <li
+                key={p.matchId}
+                className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-card"
+              >
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-bold text-accent">
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{p.pick}</p>
+                  <p className="text-xs text-muted">
+                    {p.match} · {p.league} · {formatKickoff(p.date)} UTC
+                  </p>
                 </div>
-                <div className="text-zinc-500">
-                  {p.match} · {p.league} · {formatKickoff(p.date)} UTC
+                <div className="shrink-0 text-right">
+                  <p className="text-base font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
+                  <p className="text-[11px] tabular-nums text-muted">{(p.prob * 100).toFixed(0)}%</p>
                 </div>
               </li>
             ))}
-          </ul>
+          </ol>
         </section>
       )}
 
-      <p className="text-xs text-zinc-500">
+      <p className="rounded-xl bg-surface-2 p-4 text-xs leading-relaxed text-muted">
         Odds shown are the model&apos;s own fair odds (1 divided by its estimated chance), not real
         sportsbook prices. Bookmakers take a margin on every leg, so real odds for the same bets are
         lower. The model is a simple goals estimate and is often wrong. Parlays lose money over time

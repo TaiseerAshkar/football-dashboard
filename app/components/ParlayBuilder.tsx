@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { loadExtraOdds } from "@/app/parlay/actions";
+import { useEffect, useRef, useState } from "react";
+import { checkSavedParlays, loadExtraOdds } from "@/app/parlay/actions";
 import { explain, type TeamForm } from "@/lib/explain";
 import {
   loadSaved,
   newId,
   signature,
   storeSaved,
+  type LegResult,
   type SavedParlay,
   type SavedStatus,
 } from "@/lib/saved";
@@ -22,6 +23,7 @@ type Built = {
   close: boolean;
   name: string;
   blurb: string;
+  tried: string[]; // bets already offered for a swap, so Swap never repeats itself
 };
 
 const TARGETS = [2, 3, 5, 10, 20, 50, 100, 150, 300];
@@ -97,9 +99,10 @@ function search(
   lo: number, // ln of the lowest acceptable total odds
   hi: number, // ln of the highest acceptable total odds
   minOdds: number,
+  pinned: Set<string>, // matches that must be in the parlay
   score: (sel: Leg[]) => number,
 ): Leg[] | null {
-  let pool = legs.filter((l) => l.odds >= minOdds);
+  let pool = legs.filter((l) => l.odds >= minOdds || pinned.has(l.matchId));
   if (new Set(pool.map((l) => l.matchId)).size < n) pool = legs; // too few matches: relax the minimum
   const matchIds = [...new Set(pool.map((l) => l.matchId))];
   if (matchIds.length < n) return null;
@@ -112,7 +115,8 @@ function search(
   let best: Leg[] | null = null;
   let bestScore = Infinity;
   for (let attempt = 0; attempt < 200; attempt++) {
-    const ids = shuffle(matchIds).slice(0, n);
+    const pins = matchIds.filter((id) => pinned.has(id));
+    const ids = [...pins, ...shuffle(matchIds.filter((id) => !pinned.has(id))).slice(0, n - pins.length)];
     let sel = ids.map((id) => {
       const options = byMatch.get(id)!;
       const want = g + (Math.random() - 0.5) * 0.3;
@@ -123,7 +127,10 @@ function search(
     for (let pass = 0; pass < 40; pass++) {
       const i = Math.floor(Math.random() * n);
       const used = new Set(sel.filter((_, k) => k !== i).map((p) => p.matchId));
-      const candidates = pool.filter((p) => !used.has(p.matchId));
+      // a pinned match stays; only its bet can change
+      const candidates = pinned.has(sel[i].matchId)
+        ? pool.filter((p) => p.matchId === sel[i].matchId)
+        : pool.filter((p) => !used.has(p.matchId));
       const trial = sel.map((p, k) =>
         k === i ? candidates[Math.floor(Math.random() * candidates.length)] : p,
       );
@@ -150,8 +157,28 @@ function search(
 const logSum = (sel: Leg[]) => sel.reduce((s, p) => s + Math.log(p.odds), 0);
 const riskOf = (sel: Leg[]) => sel.reduce((s, p) => s - Math.log(p.prob), 0); // lower = safer
 
+// Works out the totals for a chosen set of legs.
+function finish(picks: Leg[], name: string, blurb: string, low: number, high: number, tried: string[] = []): Built {
+  const sorted = [...picks].sort((a, b) => a.date.localeCompare(b.date));
+  const odds = sorted.reduce((s, p) => s * p.odds, 1);
+  const chance = sorted.reduce((s, p) => s * p.prob, 1);
+  const avgLeg = sorted.reduce((s, p) => s + p.prob, 0) / sorted.length;
+  const tolerance = low === high ? 0.15 : 0.03; // a fixed number is allowed more slack than a range
+  const t = Math.log(odds);
+  return {
+    picks: sorted,
+    odds,
+    chance,
+    avgLeg,
+    close: t >= Math.log(low) - tolerance && t <= Math.log(high) + tolerance,
+    name,
+    blurb,
+    tried,
+  };
+}
+
 // Three genuinely different ideas for the same games and total odds.
-function build(legs: Leg[], n: number, low: number, high: number): Built[] | string {
+function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<string>): Built[] | string {
   const matchCount = new Set(legs.map((l) => l.matchId)).size;
   if (matchCount < n) {
     return `Only ${matchCount} ${matchCount === 1 ? "match" : "matches"} with the chosen bet types in that date range. Choose fewer games, more bet types, or widen the dates.`;
@@ -199,28 +226,15 @@ function build(legs: Leg[], n: number, low: number, high: number): Built[] | str
     },
   ];
 
-  const tolerance = low === high ? 0.15 : 0.03; // a fixed number is allowed more slack than a range
   const out: Built[] = [];
   const taken = new Set<string>();
   const takenMatches = new Set<string>();
   for (const plan of plans) {
-    const sel = search(legs, n, lo, hi, plan.minOdds, (s) => plan.score(s, taken, takenMatches));
+    const sel = search(legs, n, lo, hi, plan.minOdds, pinned, (s) => plan.score(s, taken, takenMatches));
     if (!sel) continue;
     keys(sel).forEach((k) => taken.add(k));
     sel.forEach((p) => takenMatches.add(p.matchId));
-    const picks = [...sel].sort((a, b) => a.date.localeCompare(b.date));
-    const odds = picks.reduce((s, p) => s * p.odds, 1);
-    const chance = picks.reduce((s, p) => s * p.prob, 1);
-    const avgLeg = picks.reduce((s, p) => s + p.prob, 0) / picks.length;
-    out.push({
-      picks,
-      odds,
-      chance,
-      avgLeg,
-      close: Math.log(odds) >= lo - tolerance && Math.log(odds) <= hi + tolerance,
-      name: plan.name,
-      blurb: plan.blurb,
-    });
+    out.push(finish(sel, plan.name, plan.blurb, low, high));
   }
   return out.length ? out : "Could not build options from these matches.";
 }
@@ -245,6 +259,8 @@ function OptionCard({
   saved,
   onSave,
   builtAt,
+  stake,
+  onSwap,
 }: {
   built: Built;
   index: number;
@@ -253,6 +269,8 @@ function OptionCard({
   saved: boolean;
   onSave: () => void;
   builtAt: string;
+  stake: number;
+  onSwap: (legIndex: number) => void;
 }) {
   const r = risk(built.chance);
   return (
@@ -281,6 +299,12 @@ function OptionCard({
       {!built.close && (
         <p className="mt-2 text-xs text-muted">Closest I could get to {targetLabel} with these settings.</p>
       )}
+      {stake > 0 && (
+        <p className="mt-2 rounded-lg bg-accent-soft px-2.5 py-1.5 text-sm">
+          Stake <b>{stake}</b> → returns <b>{(stake * built.odds).toFixed(2)}</b> · profit{" "}
+          <b className="text-good">+{(stake * built.odds - stake).toFixed(2)}</b>
+        </p>
+      )}
 
       <ol className="mt-3 divide-y divide-line text-sm">
         {built.picks.map((p, i) => (
@@ -303,6 +327,14 @@ function OptionCard({
                 <p className="text-[11px] tabular-nums text-muted">
                   {(p.prob * 100).toFixed(0)}% · {p.source}
                 </p>
+                <button
+                  type="button"
+                  onClick={() => onSwap(i)}
+                  aria-label={`Swap ${p.pick}`}
+                  className="mt-1 text-[11px] font-medium text-accent hover:underline"
+                >
+                  ⇄ Swap
+                </button>
               </div>
             </div>
             <p className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11.5px] leading-snug">
@@ -379,12 +411,25 @@ const STATUS_STYLE: Record<SavedStatus, string> = {
   lost: "border-bad bg-bad/15 text-bad",
 };
 
+const LEG_MARK: Record<LegResult, { icon: string; style: string; tip: string }> = {
+  won: { icon: "✓", style: "text-good", tip: "Won" },
+  lost: { icon: "✗", style: "text-bad", tip: "Lost" },
+  pending: { icon: "…", style: "text-muted", tip: "Not played yet" },
+  unknown: { icon: "?", style: "text-warn", tip: "Can't be checked automatically, mark it yourself" },
+};
+
+const money = (n: number) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(2)}`;
+
 function SavedList({
   list,
+  checking,
+  onCheck,
   onStatus,
   onRemove,
 }: {
   list: SavedParlay[];
+  checking: boolean;
+  onCheck: () => void;
   onStatus: (id: string, status: SavedStatus) => void;
   onRemove: (id: string) => void;
 }) {
@@ -393,79 +438,148 @@ function SavedList({
   const lost = list.filter((p) => p.status === "lost").length;
   const pending = list.length - won - lost;
 
+  // profit across finished parlays that had a stake
+  let net = 0;
+  let hasNet = false;
+  for (const p of list) {
+    if (!p.stake || p.stake <= 0) continue;
+    if (p.status === "won") {
+      net += p.stake * (p.odds - 1);
+      hasNet = true;
+    } else if (p.status === "lost") {
+      net -= p.stake;
+      hasNet = true;
+    }
+  }
+
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-semibold">Saved parlays</h2>
-        <p className="text-sm text-muted">
-          <b className="text-good">{won} won</b> · <b className="text-bad">{lost} lost</b> · {pending} pending. Saved
-          in this browser only.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">Saved parlays</h2>
+          <p className="text-sm text-muted">
+            <b className="text-good">{won} won</b> · <b className="text-bad">{lost} lost</b> · {pending} pending
+            {hasNet && (
+              <>
+                {" "}
+                · net <b className={net >= 0 ? "text-good" : "text-bad"}>{money(net)}</b>
+              </>
+            )}
+            . Saved in this browser only.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCheck}
+          disabled={checking}
+          className="h-9 rounded-xl border border-line bg-surface px-3 text-sm font-semibold transition hover:border-accent hover:text-accent disabled:opacity-60"
+        >
+          {checking ? "Checking..." : "Check results"}
+        </button>
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
-        {list.map((p) => (
-          <article key={p.id} className="rounded-2xl border border-line bg-surface p-4 shadow-card">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold">
-                  x{p.odds.toFixed(2)} · {p.picks.length} {p.picks.length === 1 ? "leg" : "legs"}
-                </p>
-                <p className="text-xs text-muted">
-                  {p.plan} · {(p.chance * 100).toFixed(1)}% to hit · saved{" "}
-                  {new Date(p.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                </p>
+        {list.map((p) => {
+          const res = p.results;
+          const legWon = res?.filter((r) => r === "won").length ?? 0;
+          const legLost = res?.filter((r) => r === "lost").length ?? 0;
+          const legUnknown = res?.filter((r) => r === "unknown").length ?? 0;
+          return (
+            <article key={p.id} className="rounded-2xl border border-line bg-surface p-4 shadow-card">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">
+                    x{p.odds.toFixed(2)} · {p.picks.length} {p.picks.length === 1 ? "leg" : "legs"}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {p.plan} · {(p.chance * 100).toFixed(1)}% to hit · saved{" "}
+                    {new Date(p.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <ShareButton
+                    parlay={toShared(p.plan, p.odds, p.chance, p.picks, p.savedAt)}
+                    className="rounded-lg px-2 py-1 text-xs font-semibold text-accent transition-colors hover:bg-surface-2"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onRemove(p.id)}
+                    aria-label="Delete saved parlay"
+                    title="Delete"
+                    className="rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-bad"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <ShareButton
-                  parlay={toShared(p.plan, p.odds, p.chance, p.picks, p.savedAt)}
-                  className="rounded-lg px-2 py-1 text-xs font-semibold text-accent transition-colors hover:bg-surface-2"
-                />
-                <button
-                  type="button"
-                  onClick={() => onRemove(p.id)}
-                  aria-label="Delete saved parlay"
-                  title="Delete"
-                  className="rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-bad"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
 
-            <div className="mt-3 flex gap-1.5" role="group" aria-label="Result">
-              {(Object.keys(STATUS_LABEL) as SavedStatus[]).map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  aria-pressed={p.status === st}
-                  onClick={() => onStatus(p.id, st)}
-                  className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
-                    p.status === st ? STATUS_STYLE[st] : "border-line text-muted hover:text-foreground"
-                  }`}
-                >
-                  {STATUS_LABEL[st]}
-                </button>
-              ))}
-            </div>
+              {p.stake ? (
+                <p className="mt-2 text-sm">
+                  Stake <b>{p.stake}</b> → returns <b>{(p.stake * p.odds).toFixed(2)}</b>
+                  {p.status === "won" && (
+                    <b className="ml-2 text-good">{money(p.stake * (p.odds - 1))}</b>
+                  )}
+                  {p.status === "lost" && <b className="ml-2 text-bad">{money(-p.stake)}</b>}
+                </p>
+              ) : null}
 
-            <details className="mt-3 text-sm">
-              <summary className="cursor-pointer text-xs font-medium text-accent">Show legs</summary>
-              <ol className="mt-2 divide-y divide-line">
-                {p.picks.map((leg, i) => (
-                  <li key={i} className="flex items-start justify-between gap-3 py-2">
-                    <div className="min-w-0">
-                      <p className="font-medium leading-snug">{leg.pick}</p>
-                      <p className="text-xs leading-snug text-muted">
-                        {leg.match} · {leg.league} · {formatKickoff(leg.date)}
-                      </p>
-                    </div>
-                    <b className="shrink-0 tabular-nums">{leg.odds.toFixed(2)}</b>
-                  </li>
+              {res && (
+                <p className="mt-2 text-xs text-muted">
+                  <b className="text-good">{legWon}</b> of {p.picks.length} legs won
+                  {legLost > 0 && (
+                    <>
+                      {" "}
+                      · <b className="text-bad">{legLost} lost</b>
+                    </>
+                  )}
+                  {legUnknown > 0 && <> · {legUnknown} to mark yourself</>}
+                </p>
+              )}
+
+              <div className="mt-3 flex gap-1.5" role="group" aria-label="Result">
+                {(Object.keys(STATUS_LABEL) as SavedStatus[]).map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    aria-pressed={p.status === st}
+                    onClick={() => onStatus(p.id, st)}
+                    className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
+                      p.status === st ? STATUS_STYLE[st] : "border-line text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {STATUS_LABEL[st]}
+                  </button>
                 ))}
-              </ol>
-            </details>
-          </article>
-        ))}
+              </div>
+
+              <details className="mt-3 text-sm">
+                <summary className="cursor-pointer text-xs font-medium text-accent">Show legs</summary>
+                <ol className="mt-2 divide-y divide-line">
+                  {p.picks.map((leg, i) => {
+                    const mark = res?.[i] ? LEG_MARK[res[i]] : null;
+                    return (
+                      <li key={i} className="flex items-start justify-between gap-3 py-2">
+                        <div className="flex min-w-0 gap-2">
+                          {mark && (
+                            <span title={mark.tip} className={`mt-0.5 w-4 shrink-0 text-center font-bold ${mark.style}`}>
+                              {mark.icon}
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="font-medium leading-snug">{leg.pick}</p>
+                            <p className="text-xs leading-snug text-muted">
+                              {leg.match} · {leg.league} · {formatKickoff(leg.date)}
+                            </p>
+                          </div>
+                        </div>
+                        <b className="shrink-0 tabular-nums">{leg.odds.toFixed(2)}</b>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </details>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -508,6 +622,11 @@ export function ParlayBuilder({
   const [notice, setNotice] = useState<string | null>(null);
   const [results, setResults] = useState<Built[] | string | null>(null);
   const [saved, setSaved] = useState<SavedParlay[]>([]);
+  const [stake, setStake] = useState("10");
+  const [pinned, setPinned] = useState<string[]>([]);
+  const [query, setQuery] = useState<{ pool: Leg[]; low: number; high: number; pinned: string[] } | null>(null);
+  const [checking, setChecking] = useState(false);
+  const checkedOnce = useRef(false);
 
   // Default range: today to a week from now (set after load so the server and
   // browser, which can be in different time zones, never disagree).
@@ -516,7 +635,54 @@ export function ParlayBuilder({
     setFrom(localDate(today));
     setTo(localDate(addDays(today, 6)));
     setSaved(loadSaved()); // saved parlays live in this browser only
+    try {
+      const s = localStorage.getItem("parlay-stake");
+      if (s !== null) setStake(s);
+    } catch {}
   }, []);
+
+  function changeStake(value: string) {
+    setStake(value);
+    try {
+      localStorage.setItem("parlay-stake", value);
+    } catch {}
+  }
+
+  // Looks up the finished results for saved parlays that are still pending and
+  // marks each leg (and the parlay) won or lost. Manual choices are never overridden.
+  async function checkSaved(list: SavedParlay[]) {
+    const todo = list.filter((p) => p.status === "pending");
+    if (todo.length === 0) return;
+    setChecking(true);
+    try {
+      const res = await checkSavedParlays(
+        todo.map((p) => ({
+          id: p.id,
+          picks: p.picks.map((x) => ({ pick: x.pick, match: x.match, league: x.league, date: x.date })),
+        })),
+      );
+      updateSaved((prev) =>
+        prev.map((p) => {
+          const r = res.find((x) => x.id === p.id);
+          if (!r || p.status !== "pending") return p;
+          const status: SavedStatus = r.legs.includes("lost") ? "lost" : r.legs.every((l) => l === "won") ? "won" : "pending";
+          return { ...p, results: r.legs, checkedAt: new Date().toISOString(), status };
+        }),
+      );
+    } catch {
+      // the check is a convenience; failing quietly leaves everything as it was
+    }
+    setChecking(false);
+  }
+
+  // check once automatically when the saved list first loads
+  useEffect(() => {
+    if (!checkedOnce.current && saved.length > 0) {
+      checkedOnce.current = true;
+      void checkSaved(saved);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved]);
 
   // Always works from the latest list, so quick successive clicks never lose a save.
   function updateSaved(change: (prev: SavedParlay[]) => SavedParlay[]) {
@@ -539,6 +705,7 @@ export function ParlayBuilder({
         odds: b.odds,
         chance: b.chance,
         status: "pending",
+        stake: Number(stake) > 0 ? Number(stake) : undefined,
         picks: b.picks.map((p) => ({
           pick: p.pick,
           match: p.match,
@@ -591,7 +758,65 @@ export function ParlayBuilder({
       seen.add(key);
       pool.push(l);
     }
-    setResults(pool.length === 0 ? "No matches with those bet types in that date range." : build(pool, count, low, high));
+    if (pool.length === 0) {
+      setQuery(null);
+      return setResults("No matches with those bet types in that date range.");
+    }
+    const inPool = new Set(pool.map((l) => l.matchId));
+    const pins = pinned.filter((id) => inPool.has(id));
+    if (pins.length < pinned.length) {
+      setNotice("A game you pinned was left out: it has no bets for the chosen bet types, or it is outside the dates.");
+    }
+    if (pins.length > count) {
+      setQuery(null);
+      return setResults(`You pinned ${pins.length} games but chose ${count} games. Choose more games or remove a pin.`);
+    }
+    const out = build(pool, count, low, high, new Set(pins));
+    setResults(out);
+    setQuery(typeof out === "string" ? null : { pool, low, high, pinned: pins });
+  }
+
+  // Replaces one leg with the next-best bet that keeps the total odds in range.
+  function swapLeg(optionIndex: number, legIndex: number) {
+    if (!query || !Array.isArray(results)) return;
+    const b = results[optionIndex];
+    const cur = b.picks[legIndex];
+    const others = b.picks.filter((_, k) => k !== legIndex);
+    const used = new Set(others.map((p) => p.matchId));
+    const key = (l: Leg) => `${l.matchId}|${l.pick}`;
+    const tried = new Set([...b.tried, key(cur)]);
+    const isPinned = query.pinned.includes(cur.matchId);
+
+    const candidates = query.pool.filter((p) => {
+      if (tried.has(key(p))) return false;
+      return isPinned ? p.matchId === cur.matchId : !used.has(p.matchId);
+    });
+    if (candidates.length === 0) {
+      setNotice("There is no other bet that fits that slot.");
+      return;
+    }
+    const lo = Math.log(query.low);
+    const hi = Math.log(query.high);
+    const base = others.reduce((s, p) => s + Math.log(p.odds), 0);
+    const cost = (c: Leg) => {
+      const t = base + Math.log(c.odds);
+      const outside = t < lo ? lo - t : t > hi ? t - hi : 0;
+      return outside * 15 - Math.log(c.prob) + (c.odds < 1.1 ? 1 : 0) + Math.random() * 0.02;
+    };
+    const next = candidates.reduce((x, y) => (cost(x) <= cost(y) ? x : y));
+    // never accept a swap that pushes the total odds away from the target
+    const total = base + Math.log(next.odds);
+    const slack = query.low === query.high ? 0.15 : 0.03;
+    if (total < lo - slack || total > hi + slack) {
+      setNotice("No other bet for that slot keeps your total odds on target. Try swapping a different leg.");
+      return;
+    }
+    setNotice(null);
+    setResults(
+      results.map((r, k) =>
+        k === optionIndex ? finish([...others, next], r.name, r.blurb, query.low, query.high, [...tried, key(next)]) : r,
+      ),
+    );
   }
 
   function run() {
@@ -675,6 +900,15 @@ export function ParlayBuilder({
     setConfirm(null);
     setLoading(false);
   }
+
+  // distinct matches inside the chosen dates, for the "pin a game" list
+  const rangeMatches = (() => {
+    if (!from || !to || from > to) return [] as Leg[];
+    const ok = inRange();
+    const byMatch = new Map<string, Leg>();
+    for (const l of legs) if (ok(l) && !byMatch.has(l.matchId)) byMatch.set(l.matchId, l);
+    return [...byMatch.values()].sort((a, b) => a.date.localeCompare(b.date));
+  })();
 
   const built = results && typeof results !== "string" ? results : null;
   const confirmMatches = confirm ? new Set(confirm.map((c) => c.id)).size : 0;
@@ -797,6 +1031,63 @@ export function ParlayBuilder({
           </button>
         </div>
 
+        <label className="mt-4 block max-w-[12rem] text-sm font-medium">
+          <span className="mb-1.5 block text-muted">Stake (optional)</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="1"
+            value={stake}
+            onChange={(e) => changeStake(e.target.value)}
+            placeholder="e.g. 10"
+            className={field}
+          />
+        </label>
+
+        <div className="mt-5">
+          <p className="mb-2 text-sm font-medium text-muted">
+            Games to include <span className="font-normal">(optional)</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {pinned.map((id) => {
+              const l = legs.find((x) => x.matchId === id);
+              return (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-accent bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent"
+                >
+                  {l?.match ?? "Game"}
+                  <button
+                    type="button"
+                    aria-label="Remove this game"
+                    onClick={() => setPinned((prev) => prev.filter((x) => x !== id))}
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })}
+            <select
+              value=""
+              onChange={(e) => e.target.value && setPinned((prev) => [...prev, e.target.value])}
+              aria-label="Pin a game"
+              className="h-9 max-w-full rounded-xl border border-line bg-surface px-2 text-xs"
+            >
+              <option value="">+ Pin a game...</option>
+              {rangeMatches
+                .filter((m) => !pinned.includes(m.matchId))
+                .map((m) => (
+                  <option key={m.matchId} value={m.matchId}>
+                    {m.match} · {m.league} ·{" "}
+                    {new Date(m.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <p className="mt-1.5 text-xs text-muted">Pinned games appear in every option. The bet on them can still change.</p>
+        </div>
+
         <fieldset className="mt-5">
           <legend className="mb-2 text-sm font-medium text-muted">Bet types to use</legend>
           <div className="flex flex-wrap gap-2">
@@ -891,6 +1182,8 @@ export function ParlayBuilder({
                 saved={saved.some((p) => signature(p.picks) === signature(b.picks))}
                 onSave={() => saveBuilt(b)}
                 builtAt={meta.fetchedAt ?? new Date().toISOString()}
+                stake={Number(stake) > 0 ? Number(stake) : 0}
+                onSwap={(legIndex) => swapLeg(i, legIndex)}
               />
             ))}
           </div>
@@ -905,6 +1198,8 @@ export function ParlayBuilder({
 
       <SavedList
         list={saved}
+        checking={checking}
+        onCheck={() => checkSaved(saved)}
         onStatus={(id, status) => updateSaved((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)))}
         onRemove={(id) => updateSaved((prev) => prev.filter((p) => p.id !== id))}
       />

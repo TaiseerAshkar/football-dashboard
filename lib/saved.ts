@@ -4,6 +4,9 @@
 
 export type SavedStatus = "pending" | "won" | "lost";
 
+// Result of one leg when checked against finished matches.
+export type LegResult = "won" | "lost" | "pending" | "unknown";
+
 export type SavedPick = {
   pick: string;
   match: string;
@@ -22,6 +25,9 @@ export type SavedParlay = {
   chance: number;
   status: SavedStatus;
   picks: SavedPick[];
+  stake?: number; // what the user planned to bet, for payout and profit
+  results?: LegResult[]; // one per pick, from the last automatic check
+  checkedAt?: string;
 };
 
 const KEY = "saved-parlays-v1";

@@ -1,14 +1,13 @@
 import { unstable_cache } from "next/cache";
 
 export type Result<T> =
-  | { ok: true; data: T }
-  | { ok: false; status: number; error: string };
-
+  { ok: true; data: T } | { ok: false; status: number; error: string };
 
 // Server-only fetch to football-data.org. Never throws: returns a Result.
 export async function apiGet(path: string): Promise<Result<any>> {
   const key = process.env.FOOTBALL_API_KEY;
-  if (!key) return { ok: false, status: 500, error: "API key is not configured" };
+  if (!key)
+    return { ok: false, status: 500, error: "API key is not configured" };
 
   let res: Response;
   try {
@@ -16,13 +15,25 @@ export async function apiGet(path: string): Promise<Result<any>> {
       headers: { "X-Auth-Token": key },
     });
   } catch {
-    return { ok: false, status: 502, error: "Football data service is unreachable" };
+    return {
+      ok: false,
+      status: 502,
+      error: "Football data service is unreachable",
+    };
   }
   if (res.status === 429) {
-    return { ok: false, status: 429, error: "Rate limit reached, try again in a minute" };
+    return {
+      ok: false,
+      status: 429,
+      error: "Rate limit reached, try again in a minute",
+    };
   }
   if (!res.ok) {
-    return { ok: false, status: 502, error: "Football data service returned an error" };
+    return {
+      ok: false,
+      status: 502,
+      error: "Football data service returned an error",
+    };
   }
   return { ok: true, data: await res.json() };
 }
@@ -30,7 +41,10 @@ export async function apiGet(path: string): Promise<Result<any>> {
 // apiGet, but cached in Next's shared data cache (it persists across all
 // serverless instances, unlike "use cache", so visitors don't each hit the API).
 // Failures are thrown inside the cache function so they are never cached.
-export async function cachedGet(path: string, revalidateSeconds: number): Promise<Result<any>> {
+export async function cachedGet(
+  path: string,
+  revalidateSeconds: number,
+): Promise<Result<any>> {
   const run = unstable_cache(
     async () => {
       const r = await apiGet(path);
@@ -46,7 +60,11 @@ export async function cachedGet(path: string, revalidateSeconds: number): Promis
     try {
       return JSON.parse((e as Error).message);
     } catch {
-      return { ok: false, status: 502, error: "Football data service returned an error" };
+      return {
+        ok: false,
+        status: 502,
+        error: "Football data service returned an error",
+      };
     }
   }
 }

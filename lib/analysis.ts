@@ -42,7 +42,8 @@ export type TeamInfo = {
 };
 
 const pct = (x: number) => Math.round(x * 100);
-const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const avg = (xs: number[]) =>
+  xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 
 function poisson(k: number, lambda: number) {
   let p = Math.exp(-lambda);
@@ -65,17 +66,33 @@ function makeStrengths(finished: Match[]) {
     const home = finished.filter((m) => m.home.id === teamId);
     const away = finished.filter((m) => m.away.id === teamId);
     return {
-      attackHome: rate(home.map((m) => m.homeGoals), leagueHome),
-      defenceHome: rate(home.map((m) => m.awayGoals), leagueAway),
-      attackAway: rate(away.map((m) => m.awayGoals), leagueAway),
-      defenceAway: rate(away.map((m) => m.homeGoals), leagueHome),
+      attackHome: rate(
+        home.map((m) => m.homeGoals),
+        leagueHome,
+      ),
+      defenceHome: rate(
+        home.map((m) => m.awayGoals),
+        leagueAway,
+      ),
+      attackAway: rate(
+        away.map((m) => m.awayGoals),
+        leagueAway,
+      ),
+      defenceAway: rate(
+        away.map((m) => m.homeGoals),
+        leagueHome,
+      ),
       leagueHome,
       leagueAway,
     };
   };
 }
 
-function predict(strengths: ReturnType<typeof makeStrengths>, homeId: number, awayId: number) {
+function predict(
+  strengths: ReturnType<typeof makeStrengths>,
+  homeId: number,
+  awayId: number,
+) {
   const h = strengths(homeId);
   const a = strengths(awayId);
   const lambdaHome = h.leagueHome * h.attackHome * a.defenceAway;
@@ -101,7 +118,16 @@ function predict(strengths: ReturnType<typeof makeStrengths>, homeId: number, aw
     }
   }
   const btts = (1 - Math.exp(-lambdaHome)) * (1 - Math.exp(-lambdaAway));
-  return { lambdaHome, lambdaAway, homeWin, draw, awayWin, over25, btts, bestScore };
+  return {
+    lambdaHome,
+    lambdaAway,
+    homeWin,
+    draw,
+    awayWin,
+    over25,
+    btts,
+    bestScore,
+  };
 }
 
 function lastGames(finished: Match[], teamId: number): Game[] {
@@ -143,18 +169,29 @@ function betAngles(games: Game[], next: NextMatch | null) {
   const gaAvg = avg(games.map((g) => g.ga));
 
   if (wins >= 3) pros.push(`Result: won ${wins} of the last ${n}`);
-  if (next && next.win >= 55) pros.push(`Result: ${next.win}% win chance in the next match`);
-  if (over25 >= 3) pros.push(`Goals: over 2.5 total goals in ${over25} of the last ${n}`);
-  if (gfAvg >= 2) pros.push(`Goals: scoring ${gfAvg.toFixed(1)} per game lately`);
-  if (btts >= 3) pros.push(`Both teams to score: yes in ${btts} of the last ${n}`);
-  if (cleanSheets >= 2) pros.push(`Defence: ${cleanSheets} clean sheets in the last ${n}`);
+  if (next && next.win >= 55)
+    pros.push(`Result: ${next.win}% win chance in the next match`);
+  if (over25 >= 3)
+    pros.push(`Goals: over 2.5 total goals in ${over25} of the last ${n}`);
+  if (gfAvg >= 2)
+    pros.push(`Goals: scoring ${gfAvg.toFixed(1)} per game lately`);
+  if (btts >= 3)
+    pros.push(`Both teams to score: yes in ${btts} of the last ${n}`);
+  if (cleanSheets >= 2)
+    pros.push(`Defence: ${cleanSheets} clean sheets in the last ${n}`);
 
   if (losses >= 2) cons.push(`Result: lost ${losses} of the last ${n}`);
   if (wins === 0) cons.push(`Result: no wins in the last ${n}`);
-  if (under25 >= 3) cons.push(`Goals: under 2.5 total goals in ${under25} of the last ${n}, so overs are risky`);
-  if (blanks >= 2) cons.push(`Goals: failed to score in ${blanks} of the last ${n}`);
-  if (gaAvg >= 1.5) cons.push(`Defence: conceding ${gaAvg.toFixed(1)} per game lately`);
-  if (btts <= 1) cons.push(`Both teams to score: only ${btts} of the last ${n}`);
+  if (under25 >= 3)
+    cons.push(
+      `Goals: under 2.5 total goals in ${under25} of the last ${n}, so overs are risky`,
+    );
+  if (blanks >= 2)
+    cons.push(`Goals: failed to score in ${blanks} of the last ${n}`);
+  if (gaAvg >= 1.5)
+    cons.push(`Defence: conceding ${gaAvg.toFixed(1)} per game lately`);
+  if (btts <= 1)
+    cons.push(`Both teams to score: only ${btts} of the last ${n}`);
   return { pros, cons };
 }
 
@@ -182,7 +219,10 @@ function headline(next: Omit<NextMatch, "headline">, teamName: string) {
 }
 
 // Everything the team panel needs, for every team in the league.
-export function buildTeamInfos(matches: Match[], teams: { id: number; name: string }[]) {
+export function buildTeamInfos(
+  matches: Match[],
+  teams: { id: number; name: string }[],
+) {
   const finished = matches.filter((m) => m.finished);
   const upcoming = matches
     .filter((m) => !m.finished)
@@ -194,7 +234,9 @@ export function buildTeamInfos(matches: Match[], teams: { id: number; name: stri
     const all = lastGames(finished, team.id);
     const games = all.slice(0, 5);
 
-    const fixture = upcoming.find((m) => m.home.id === team.id || m.away.id === team.id);
+    const fixture = upcoming.find(
+      (m) => m.home.id === team.id || m.away.id === team.id,
+    );
     let next: NextMatch | null = null;
     if (fixture) {
       const home = fixture.home.id === team.id;
@@ -219,7 +261,8 @@ export function buildTeamInfos(matches: Match[], teams: { id: number; name: stri
     }
 
     const n = all.length;
-    const share = (f: (g: Game) => boolean) => (n ? pct(all.filter(f).length / n) : 0);
+    const share = (f: (g: Game) => boolean) =>
+      n ? pct(all.filter(f).length / n) : 0;
     infos[team.id] = {
       games,
       stats: {
@@ -236,4 +279,46 @@ export function buildTeamInfos(matches: Match[], teams: { id: number; name: stri
     };
   }
   return infos;
+}
+
+export type Fixture = {
+  id: number;
+  date: string;
+  home: string;
+  away: string;
+  homeWin: number;
+  draw: number;
+  awayWin: number;
+  over25: number;
+  btts: number;
+  likelyScore: string;
+};
+
+// The next round of fixtures: as many upcoming matches as one round holds
+// (teams / 2), with the model's estimate for each.
+export function buildFixtures(matches: Match[]): Fixture[] {
+  const strengths = makeStrengths(matches.filter((m) => m.finished));
+  const upcoming = matches
+    .filter((m) => !m.finished && m.home.id && m.away.id)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const teams = new Set(matches.flatMap((m) => [m.home.id, m.away.id]).filter(Boolean));
+  const perRound = Math.max(1, Math.floor(teams.size / 2));
+
+  return upcoming
+    .slice(0, perRound)
+    .map((m) => {
+      const p = predict(strengths, m.home.id, m.away.id);
+      return {
+        id: m.id,
+        date: m.date,
+        home: m.home.name,
+        away: m.away.name,
+        homeWin: pct(p.homeWin),
+        draw: pct(p.draw),
+        awayWin: pct(p.awayWin),
+        over25: pct(p.over25),
+        btts: pct(p.btts),
+        likelyScore: `${p.bestScore[0]}-${p.bestScore[1]}`,
+      };
+    });
 }

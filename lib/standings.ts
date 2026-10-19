@@ -24,7 +24,14 @@ export async function getStandings(league: string): Promise<StandingsResult> {
   if (!r.ok) return r;
 
   // "TOTAL" is the full-season table (the API also returns HOME and AWAY).
-  const total = r.data.standings?.find((s: { type: string }) => s.type === "TOTAL");
-  if (!total) return { ok: false, status: 502, error: "Unexpected response from football data service" };
+  const total = r.data.standings?.find(
+    (s: { type: string }) => s.type === "TOTAL",
+  );
+  if (!total)
+    return {
+      ok: false,
+      status: 502,
+      error: "Unexpected response from football data service",
+    };
   return { ok: true, table: total.table };
 }

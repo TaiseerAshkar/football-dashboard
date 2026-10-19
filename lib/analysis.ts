@@ -22,6 +22,15 @@ export type NextMatch = {
   xgAgainst: number;
   likelyScore: string; // this team's goals first
   headline: string[];
+  h2h: { facts: string[]; meetings: Meeting[] };
+};
+
+export type Meeting = {
+  date: string;
+  home: string;
+  away: string;
+  homeGoals: number;
+  awayGoals: number;
 };
 
 export type TeamInfo = {
@@ -157,7 +166,74 @@ function betAngles(games: Game[], next: NextMatch | null) {
   return { pros, cons };
 }
 
-function headline(next: Omit<NextMatch, "headline">, teamName: string) {
+const toMeetings = (ms: Match[]): Meeting[] =>
+  ms.map((m) => ({
+    date: m.date,
+    home: m.home.name,
+    away: m.away.name,
+    homeGoals: m.homeGoals,
+    awayGoals: m.awayGoals,
+  }));
+
+// Facts about this exact fixture: past meetings between the two teams
+// (this season plus the previous two) and the same-venue record.
+function headToHead(finished: Match[], teamId: number, oppName: string, oppId: number, teamIsHome: boolean) {
+  const meetings = finished
+    .filter(
+      (m) =>
+        (m.home.id === teamId && m.away.id === oppId) || (m.home.id === oppId && m.away.id === teamId),
+    )
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const recent = meetings.slice(0, 5);
+  const facts: string[] = [];
+  const n = recent.length;
+  if (n < 2) {
+    return { facts: ["Not enough recent meetings to say much"], meetings: toMeetings(recent) };
+  }
+
+  const outcome = (m: Match) => {
+    const gf = m.home.id === teamId ? m.homeGoals : m.awayGoals;
+    const ga = m.home.id === teamId ? m.awayGoals : m.homeGoals;
+    return gf > ga ? "W" : gf < ga ? "L" : "D";
+  };
+  const count = (f: (m: Match) => boolean) => recent.filter(f).length;
+
+  const wins = count((m) => outcome(m) === "W");
+  const draws = count((m) => outcome(m) === "D");
+  facts.push(`Last ${n} meetings: won ${wins}, drew ${draws}, lost ${n - wins - draws}`);
+
+  // Same venue as the coming match (same team at home), up to the last 4 there.
+  const venue = meetings.filter((m) => (m.home.id === teamId) === teamIsHome).slice(0, 4);
+  if (venue.length >= 2) {
+    const vWins = venue.filter((m) => outcome(m) === "W").length;
+    const vLosses = venue.filter((m) => outcome(m) === "L").length;
+    const where = teamIsHome ? "at home" : "at their ground";
+    if (vWins === 0 && vLosses === venue.length) {
+      facts.push(`Lost the last ${venue.length} ${teamIsHome ? "home games" : "visits"} against ${oppName}`);
+    } else if (vWins === 0) {
+      facts.push(`Hasn't beaten ${oppName} ${where} in the last ${venue.length} meetings there`);
+    } else if (vWins === venue.length) {
+      facts.push(`Won the last ${venue.length} ${teamIsHome ? "home games" : "visits"} against ${oppName}`);
+    } else if (vLosses === 0) {
+      facts.push(`Unbeaten ${where} against ${oppName} in the last ${venue.length}`);
+    }
+  }
+
+  const total = (m: Match) => m.homeGoals + m.awayGoals;
+  const over15 = count((m) => total(m) >= 2);
+  const over25 = count((m) => total(m) >= 3);
+  const btts = count((m) => m.homeGoals > 0 && m.awayGoals > 0);
+  if (n >= 3 && over15 === n) facts.push(`More than 1.5 goals in all of the last ${n} meetings`);
+  if (n >= 3 && over25 >= n - 1) facts.push(`Over 2.5 goals in ${over25} of the last ${n} meetings`);
+  if (n >= 3 && n - over25 >= n - 1) facts.push(`Under 2.5 goals in ${n - over25} of the last ${n} meetings`);
+  if (n >= 3 && btts >= n - 1) facts.push(`Both teams scored in ${btts} of the last ${n} meetings`);
+  if (n >= 3 && btts <= 1) facts.push(`Both teams scored in only ${btts} of the last ${n} meetings`);
+
+  return { facts, meetings: toMeetings(recent) };
+}
+
+function headline(next: Omit<NextMatch, "headline" | "h2h">, teamName: string) {
   const best = Math.max(next.win, next.draw, next.loss);
   const result =
     best === next.win
@@ -181,12 +257,13 @@ function headline(next: Omit<NextMatch, "headline">, teamName: string) {
 }
 
 // Everything the team panel needs, for every team in the league.
-export function buildTeamInfos(matches: Match[], teams: { id: number; name: string }[]) {
+export function buildTeamInfos(matches: Match[], history: Match[], teams: { id: number; name: string }[]) {
   const finished = matches.filter((m) => m.finished);
   const upcoming = matches
     .filter((m) => !m.finished)
     .sort((a, b) => a.date.localeCompare(b.date));
   const strengths = makeStrengths(finished);
+  const everFinished = [...history, ...finished];
 
   const infos: Record<number, TeamInfo> = {};
   for (const team of teams) {
@@ -213,7 +290,12 @@ export function buildTeamInfos(matches: Match[], teams: { id: number; name: stri
           ? `${p.bestScore[0]}-${p.bestScore[1]}`
           : `${p.bestScore[1]}-${p.bestScore[0]}`,
       };
-      next = { ...base, headline: headline(base, team.name) };
+      const oppId = home ? fixture.away.id : fixture.home.id;
+      next = {
+        ...base,
+        headline: headline(base, team.name),
+        h2h: headToHead(everFinished, team.id, base.opponent, oppId, home),
+      };
     }
 
     const n = all.length;

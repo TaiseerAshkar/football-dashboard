@@ -13,6 +13,9 @@ const formatDate = (iso: string) =>
     timeZone: "UTC",
   });
 
+const formatMonth = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+
 function TeamPanel({ info }: { info: TeamInfo }) {
   const { next, stats, pros, cons, games } = info;
   return (
@@ -32,6 +35,21 @@ function TeamPanel({ info }: { info: TeamInfo }) {
             Both teams to score {next.btts}% · Expected goals {next.xgFor.toFixed(1)}-
             {next.xgAgainst.toFixed(1)} · Most likely score {next.likelyScore}
           </p>
+          <h3 className="mb-1 mt-4 font-semibold">Head-to-head vs {next.opponent}</h3>
+          <ul className="list-disc pl-5">
+            {next.h2h.facts.map((f) => (
+              <li key={f}>{f}</li>
+            ))}
+          </ul>
+          {next.h2h.meetings.length > 0 && (
+            <ul className="mt-2 text-zinc-500">
+              {next.h2h.meetings.map((m) => (
+                <li key={m.date}>
+                  {formatMonth(m.date)}: {m.home} {m.homeGoals}-{m.awayGoals} {m.away}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ) : (
         <p>No upcoming match found.</p>

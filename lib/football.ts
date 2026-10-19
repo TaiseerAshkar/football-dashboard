@@ -40,6 +40,16 @@ export type Match = {
   awayGoals: number;
 };
 
+const toMatches = (raw: any[]): Match[] =>
+  raw.map((m) => ({
+    date: m.utcDate,
+    finished: m.status === "FINISHED",
+    home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name },
+    away: { id: m.awayTeam.id, name: m.awayTeam.shortName ?? m.awayTeam.name },
+    homeGoals: m.score.fullTime.home ?? 0,
+    awayGoals: m.score.fullTime.away ?? 0,
+  }));
+
 // Every match of the season (finished and upcoming) in ONE request per league.
 // Form, stats, predictions and fixtures are all computed from this, so we stay
 // far under the free 10 requests/minute limit.
@@ -52,15 +62,28 @@ export async function getMatches(league: string): Promise<Result<Match[]>> {
     cacheLife(RETRY_SOON);
     return r;
   }
-  const matches: Match[] = r.data.matches.map((m: any) => ({
-    date: m.utcDate,
-    finished: m.status === "FINISHED",
-    home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name },
-    away: { id: m.awayTeam.id, name: m.awayTeam.shortName ?? m.awayTeam.name },
-    homeGoals: m.score.fullTime.home ?? 0,
-    awayGoals: m.score.fullTime.away ?? 0,
-  }));
-  return { ok: true, data: matches };
+  return { ok: true, data: toMatches(r.data.matches) };
+}
+
+// Finished matches from the previous two seasons, for head-to-head facts.
+// Old results never change, so this is cached for a day.
+export async function getHistory(league: string): Promise<Result<Match[]>> {
+  "use cache";
+  cacheLife({ stale: 86400, revalidate: 86400, expire: 172800 });
+
+  const now = new Date();
+  const startYear = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+
+  const all: Match[] = [];
+  for (const season of [startYear - 1, startYear - 2]) {
+    const r = await apiGet(`/competitions/${league}/matches?season=${season}&status=FINISHED`);
+    if (!r.ok) {
+      cacheLife(RETRY_SOON);
+      return r;
+    }
+    all.push(...toMatches(r.data.matches));
+  }
+  return { ok: true, data: all };
 }
 
 export type Scorer = {

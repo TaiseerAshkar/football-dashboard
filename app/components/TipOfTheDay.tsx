@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { TipRecord } from "@/app/components/TipRecord";
 import { getMatches } from "@/lib/football";
 import { LEAGUES } from "@/lib/leagues";
 import { tipOfTheDay } from "@/lib/tip";
@@ -65,6 +66,16 @@ export async function TipOfTheDay() {
           ))}
         </ul>
       )}
+      <TipRecord
+        today={{
+          day: top.date.slice(0, 10),
+          pick: top.pick,
+          match: `${top.home} vs ${top.away}`,
+          league: top.leagueName,
+          date: top.date,
+          prob: top.prob,
+        }}
+      />
       <p className="relative mt-3 text-[11px] text-muted">From a simple goals model, not a guarantee.</p>
     </section>
   );

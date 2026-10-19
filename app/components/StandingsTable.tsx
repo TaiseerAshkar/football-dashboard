@@ -81,9 +81,12 @@ function HeadToHead({
     | { status: "error"; message: string }
     | { status: "ok"; matches: Match[] }
   >({ status: "loading" });
+  const [attempt, setAttempt] = useState(0);
 
+  // If the API's per-minute limit is hit, try again every 8 seconds (up to 8 times).
   useEffect(() => {
     const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     fetch(`/api/h2h?match=${matchId}`, { signal: controller.signal })
       .then(async (res) => {
         const body = await res.json();
@@ -91,10 +94,15 @@ function HeadToHead({
         setState({ status: "ok", matches: body });
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setState({ status: "error", message: e.message });
+        if (e.name === "AbortError") return;
+        setState({ status: "error", message: e.message });
+        if (attempt < 8) timer = setTimeout(() => setAttempt(attempt + 1), 8000);
       });
-    return () => controller.abort();
-  }, [matchId]);
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [matchId, attempt]);
 
   if (state.status === "loading") {
     return (
@@ -104,7 +112,16 @@ function HeadToHead({
       </div>
     );
   }
-  if (state.status === "error") return <p className="text-sm text-bad">{state.message}</p>;
+  if (state.status === "error") {
+    return (
+      <p className="flex items-center gap-2 text-sm text-warn">
+        <svg className="h-4 w-4 shrink-0 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden>
+          <path d="M21 12a9 9 0 1 1-6.2-8.55" strokeLinecap="round" />
+        </svg>
+        {state.message}. Trying again...
+      </p>
+    );
+  }
 
   const { facts, atGround } = headToHead(state.matches, teamId, opponent, teamIsHome);
   return (

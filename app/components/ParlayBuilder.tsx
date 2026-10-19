@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { loadExtraOdds } from "@/app/parlay/actions";
+import { explain, type TeamForm } from "@/lib/explain";
 import type { ExtraMarket, ExtraRequest, Leg, LegKind } from "@/lib/odds";
 
 type Built = { picks: Leg[]; odds: number; chance: number; avgLeg: number; close: boolean };
@@ -148,7 +149,17 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function OptionCard({ built, index, target }: { built: Built; index: number; target: number }) {
+function OptionCard({
+  built,
+  index,
+  target,
+  formIndex,
+}: {
+  built: Built;
+  index: number;
+  target: number;
+  formIndex: TeamForm[];
+}) {
   const r = risk(built.chance);
   return (
     <article className="flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-card">
@@ -190,6 +201,10 @@ function OptionCard({ built, index, target }: { built: Built; index: number; tar
               <p className="text-xs leading-snug text-muted">
                 {p.match} · {p.league} · {formatKickoff(p.date)}
               </p>
+              <p className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-xs leading-snug">
+                <span className="font-semibold text-accent">Why: </span>
+                {explain(p, formIndex)}
+              </p>
             </div>
             <div className="shrink-0 text-right">
               <p className="font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
@@ -209,9 +224,11 @@ const chip =
 
 export function ParlayBuilder({
   legs,
+  formIndex,
   meta,
 }: {
   legs: Leg[];
+  formIndex: TeamForm[];
   meta: { remaining: number | null; updated: string | null };
 }) {
   const [count, setCount] = useState(5);
@@ -488,7 +505,7 @@ export function ParlayBuilder({
         <div className="space-y-3">
           <div className="grid gap-4 lg:grid-cols-3">
             {built.map((b, i) => (
-              <OptionCard key={i} built={b} index={i} target={target} />
+              <OptionCard key={i} built={b} index={i} target={target} formIndex={formIndex} />
             ))}
           </div>
           {built.length < OPTIONS && (

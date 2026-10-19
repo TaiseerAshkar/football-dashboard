@@ -88,6 +88,8 @@ export type Leg = {
   date: string;
   league: string;
   match: string;
+  home: string;
+  away: string;
   pick: string;
   odds: number; // decimal odds offered by the bookmaker
   prob: number; // chance with the bookmaker's margin removed, 0..1
@@ -132,7 +134,7 @@ const halfLine = (p: number | undefined): p is number => p !== undefined && p % 
 
 // Over/under pairs at every .5 line of a totals-type market (no half-win Asian lines).
 function overUnderLegs(
-  base: Pick<Leg, "matchId" | "sport" | "date" | "league" | "match">,
+  base: Pick<Leg, "matchId" | "sport" | "date" | "league" | "match" | "home" | "away">,
   market: { outcomes: RawOutcome[]; source: string },
   kind: LegKind,
 ): Leg[] {
@@ -159,7 +161,15 @@ export function buildOddsLegs(events: RawEvent[], league: string, now: number, d
   for (const e of events) {
     const t = new Date(e.commence_time).getTime();
     if (t <= now || t > until) continue;
-    const base = { matchId: e.id, sport, date: e.commence_time, league, match: `${e.home_team} vs ${e.away_team}` };
+    const base = {
+      matchId: e.id,
+      sport,
+      date: e.commence_time,
+      league,
+      match: `${e.home_team} vs ${e.away_team}`,
+      home: e.home_team,
+      away: e.away_team,
+    };
 
     const h2h = findMarket(e.bookmakers, "h2h", (o) => o.length === 3);
     if (h2h) {
@@ -239,7 +249,7 @@ async function getEventMarket(sport: string, id: string, market: string, region:
 function legsFromDetail(event: RawEvent, sport: string, league: string, market: ExtraMarket, detail: EventDetail): Leg[] {
   const home = event.home_team;
   const away = event.away_team;
-  const base = { matchId: event.id, sport, date: event.commence_time, league, match: `${home} vs ${away}` };
+  const base = { matchId: event.id, sport, date: event.commence_time, league, match: `${home} vs ${away}`, home, away };
   const legs: Leg[] = [];
 
   if (market === "btts") {

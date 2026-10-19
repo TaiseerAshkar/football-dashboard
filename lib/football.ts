@@ -76,8 +76,8 @@ export type Match = {
   live: boolean;
   date: string;
   finished: boolean;
-  home: { id: number; name: string };
-  away: { id: number; name: string };
+  home: { id: number; name: string; full?: string };
+  away: { id: number; name: string; full?: string };
   homeGoals: number;
   awayGoals: number;
 };
@@ -89,8 +89,8 @@ const toMatches = (raw: any[]): Match[] =>
     live: ["IN_PLAY", "PAUSED", "LIVE"].includes(m.status),
     date: m.utcDate,
     finished: m.status === "FINISHED",
-    home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name },
-    away: { id: m.awayTeam.id, name: m.awayTeam.shortName ?? m.awayTeam.name },
+    home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name, full: m.homeTeam.name },
+    away: { id: m.awayTeam.id, name: m.awayTeam.shortName ?? m.awayTeam.name, full: m.awayTeam.name },
     homeGoals: m.score.fullTime.home ?? 0,
     awayGoals: m.score.fullTime.away ?? 0,
   }));

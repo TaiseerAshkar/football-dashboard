@@ -2,6 +2,9 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ParlayBuilder } from "@/app/components/ParlayBuilder";
 import { ListSkeleton } from "@/app/components/Skeletons";
+import { buildFormIndex } from "@/lib/explain";
+import { getMatches } from "@/lib/football";
+import { LEAGUES } from "@/lib/leagues";
 import { buildOddsLegs, getOdds, ODDS_SPORTS } from "@/lib/odds";
 
 export const metadata = { title: "Parlay builder" };
@@ -11,9 +14,13 @@ export const metadata = { title: "Parlay builder" };
 async function Builder() {
   await connection(); // needs the real current time
   const now = Date.now();
-  const results = await Promise.all(
-    ODDS_SPORTS.map(async (s) => ({ sport: s, result: await getOdds(s.key) })),
-  );
+  const [results, formLists] = await Promise.all([
+    Promise.all(ODDS_SPORTS.map(async (s) => ({ sport: s, result: await getOdds(s.key) }))),
+    // recent results (football-data.org, cached 5 min) used for the "why it could hit" lines;
+    // if a league fails to load, its teams just get a shorter explanation
+    Promise.all(LEAGUES.map((l) => getMatches(l.code))),
+  ]);
+  const formIndex = buildFormIndex(formLists.flatMap((r) => (r.ok ? [r.data] : [])));
   const legs = results.flatMap(({ sport, result }) =>
     result.ok ? buildOddsLegs(result.data.events, sport.league, now, 14, sport.key) : [],
   );
@@ -43,6 +50,7 @@ async function Builder() {
       )}
       <ParlayBuilder
         legs={legs}
+        formIndex={formIndex}
         meta={{ remaining: remaining !== null && Number.isFinite(remaining) ? remaining : null, updated }}
       />
     </div>

@@ -1,8 +1,10 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { FormBadges } from "@/app/components/FormBadges";
 import type { TeamInfo } from "@/lib/analysis";
+import type { Match } from "@/lib/football";
+import { headToHead } from "@/lib/h2h";
 import type { StandingRow } from "@/lib/standings";
 
 const formatDate = (iso: string) =>
@@ -13,10 +15,70 @@ const formatDate = (iso: string) =>
     timeZone: "UTC",
   });
 
-const formatMonth = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+const formatFull = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 
-function TeamPanel({ info }: { info: TeamInfo }) {
+// Loads past meetings only when a team is opened (one API request per fixture,
+// cached for a day), then shows the last 5 at the ground and facts about them.
+function HeadToHead({
+  matchId,
+  teamId,
+  opponent,
+  teamIsHome,
+}: {
+  matchId: number;
+  teamId: number;
+  opponent: string;
+  teamIsHome: boolean;
+}) {
+  const [state, setState] = useState<
+    { status: "loading" } | { status: "error"; message: string } | { status: "ok"; matches: Match[] }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/h2h?match=${matchId}`, { signal: controller.signal })
+      .then(async (res) => {
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? "Could not load head-to-head");
+        setState({ status: "ok", matches: body });
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setState({ status: "error", message: e.message });
+      });
+    return () => controller.abort();
+  }, [matchId]);
+
+  if (state.status === "loading") return <p className="text-zinc-500">Loading head-to-head...</p>;
+  if (state.status === "error") return <p className="text-red-600">{state.message}</p>;
+
+  const { facts, atGround } = headToHead(state.matches, teamId, opponent, teamIsHome);
+  return (
+    <>
+      <ul className="list-disc pl-5">
+        {facts.map((f) => (
+          <li key={f}>{f}</li>
+        ))}
+      </ul>
+      {atGround.length > 0 && (
+        <ul className="mt-2 text-zinc-500">
+          {atGround.map((m) => (
+            <li key={m.id}>
+              {formatFull(m.date)}: {m.home.name} {m.homeGoals}-{m.awayGoals} {m.away.name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function TeamPanel({ info, teamId }: { info: TeamInfo; teamId: number }) {
   const { next, stats, pros, cons, games } = info;
   return (
     <div className="space-y-5 rounded bg-black/[.04] p-4 text-sm dark:bg-white/[.06]">
@@ -35,21 +97,15 @@ function TeamPanel({ info }: { info: TeamInfo }) {
             Both teams to score {next.btts}% · Expected goals {next.xgFor.toFixed(1)}-
             {next.xgAgainst.toFixed(1)} · Most likely score {next.likelyScore}
           </p>
-          <h3 className="mb-1 mt-4 font-semibold">Head-to-head vs {next.opponent}</h3>
-          <ul className="list-disc pl-5">
-            {next.h2h.facts.map((f) => (
-              <li key={f}>{f}</li>
-            ))}
-          </ul>
-          {next.h2h.meetings.length > 0 && (
-            <ul className="mt-2 text-zinc-500">
-              {next.h2h.meetings.map((m) => (
-                <li key={m.date}>
-                  {formatMonth(m.date)}: {m.home} {m.homeGoals}-{m.awayGoals} {m.away}
-                </li>
-              ))}
-            </ul>
-          )}
+          <h3 className="mb-1 mt-4 font-semibold">
+            Head-to-head at {next.home ? "home" : "their ground"} vs {next.opponent}
+          </h3>
+          <HeadToHead
+            matchId={next.matchId}
+            teamId={teamId}
+            opponent={next.opponent}
+            teamIsHome={next.home}
+          />
         </div>
       ) : (
         <p>No upcoming match found.</p>
@@ -61,7 +117,8 @@ function TeamPanel({ info }: { info: TeamInfo }) {
           {games.map((g) => (
             <li key={g.date} className="flex justify-between border-b py-0.5">
               <span>
-                {g.home ? "vs" : "@"} {g.opponent}
+                <span className="text-zinc-500">{formatFull(g.date)}</span> {g.home ? "vs" : "@"}{" "}
+                {g.opponent}
               </span>
               <span className="font-semibold">
                 {g.gf}-{g.ga} ({g.result})
@@ -156,7 +213,7 @@ export function StandingsTable({
               {open && info && (
                 <tr className="border-b">
                   <td colSpan={9} className="py-3">
-                    <TeamPanel info={info} />
+                    <TeamPanel info={info} teamId={row.team.id} />
                   </td>
                 </tr>
               )}

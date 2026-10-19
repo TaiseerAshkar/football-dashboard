@@ -52,6 +52,7 @@ export async function cachedGet(path: string, revalidateSeconds: number): Promis
 }
 
 export type Match = {
+  id: number;
   date: string;
   finished: boolean;
   home: { id: number; name: string };
@@ -62,6 +63,7 @@ export type Match = {
 
 const toMatches = (raw: any[]): Match[] =>
   raw.map((m) => ({
+    id: m.id,
     date: m.utcDate,
     finished: m.status === "FINISHED",
     home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name },
@@ -79,19 +81,13 @@ export async function getMatches(league: string): Promise<Result<Match[]>> {
   return { ok: true, data: toMatches(r.data.matches) };
 }
 
-// Finished matches from the previous two seasons, for head-to-head facts.
-// Old results never change, so this is cached for a day.
-export async function getHistory(league: string): Promise<Result<Match[]>> {
-  const now = new Date();
-  const startYear = now.getUTCMonth() >= 7 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-
-  const all: Match[] = [];
-  for (const season of [startYear - 1, startYear - 2]) {
-    const r = await cachedGet(`/competitions/${league}/matches?season=${season}&status=FINISHED`, 86400);
-    if (!r.ok) return r;
-    all.push(...toMatches(r.data.matches));
-  }
-  return { ok: true, data: all };
+// Past meetings of the two teams in a fixture, as far back as the API has them
+// (about 2020 on the free plan). Old results never change, so cache for a day.
+export async function getHeadToHead(matchId: number): Promise<Result<Match[]>> {
+  const r = await cachedGet(`/matches/${matchId}/head2head?limit=50`, 86400);
+  if (!r.ok) return r;
+  const finished = r.data.matches.filter((m: any) => m.status === "FINISHED");
+  return { ok: true, data: toMatches(finished) };
 }
 
 export type Scorer = {

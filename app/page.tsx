@@ -2,16 +2,12 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { StandingsTable } from "@/app/components/StandingsTable";
 import { buildTeamInfos } from "@/lib/analysis";
-import { getHistory, getMatches, getScorers, type Scorer } from "@/lib/football";
+import { getMatches, getScorers, type Scorer } from "@/lib/football";
 import { LEAGUES, parseLeague, type LeagueCode } from "@/lib/leagues";
 import { getStandings } from "@/lib/standings";
 
 async function Standings({ league }: { league: LeagueCode }) {
-  const [standings, matches, history] = await Promise.all([
-    getStandings(league),
-    getMatches(league),
-    getHistory(league),
-  ]);
+  const [standings, matches] = await Promise.all([getStandings(league), getMatches(league)]);
   if (!standings.ok) {
     return <p className="text-red-600">Could not load standings: {standings.error}</p>;
   }
@@ -20,7 +16,6 @@ async function Standings({ league }: { league: LeagueCode }) {
   const infos = matches.ok
     ? buildTeamInfos(
         matches.data,
-        history.ok ? history.data : [], // without history, head-to-head just uses this season
         standings.table.map((r) => ({ id: r.team.id, name: r.team.shortName ?? r.team.name })),
       )
     : {};

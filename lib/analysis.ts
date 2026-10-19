@@ -152,50 +152,97 @@ function lastGames(finished: Match[], teamId: number): Game[] {
     });
 }
 
-// Pros/cons framed as betting angles (result, goals, both teams to score),
-// based on the last 5 games plus the model's chance for the next match.
-function betAngles(games: Game[], next: NextMatch | null) {
+// Pros/cons framed as betting angles (result, goals, both teams to score).
+// They come from the last 5 games, the team's form at the venue of its next
+// match, its recent form against its own season average, and the model's chance
+// for the next match. A point only shows up when the numbers really say it, so a
+// team with no real weaknesses can still have an empty cons list.
+function betAngles(all: Game[], next: NextMatch | null) {
   const pros: string[] = [];
   const cons: string[] = [];
+  const games = all.slice(0, 5);
   const n = games.length;
   if (n === 0) return { pros, cons };
 
   const count = (f: (g: Game) => boolean) => games.filter(f).length;
   const wins = count((g) => g.result === "W");
+  const draws = count((g) => g.result === "D");
   const losses = count((g) => g.result === "L");
   const over25 = count((g) => g.gf + g.ga >= 3);
   const under25 = count((g) => g.gf + g.ga <= 2);
+  const lowTotals = count((g) => g.gf + g.ga <= 1);
   const btts = count((g) => g.gf > 0 && g.ga > 0);
   const cleanSheets = count((g) => g.ga === 0);
   const blanks = count((g) => g.gf === 0);
+  const oneOrNone = count((g) => g.gf <= 1);
+  const bigScores = count((g) => g.gf >= 3);
+  const conceded2 = count((g) => g.ga >= 2);
   const gfAvg = avg(games.map((g) => g.gf));
   const gaAvg = avg(games.map((g) => g.ga));
+  const points = (gs: Game[]) => avg(gs.map((g) => (g.result === "W" ? 3 : g.result === "D" ? 1 : 0)));
 
+  // form at the venue of the next match (home games if they play at home)
+  const venue = next ? all.filter((g) => g.home === next.home).slice(0, 5) : [];
+  const where = next?.home ? "at home" : "away";
+  const vWins = venue.filter((g) => g.result === "W").length;
+  const vLosses = venue.filter((g) => g.result === "L").length;
+  const vConceded = avg(venue.map((g) => g.ga));
+
+  // ---- pros ----
   if (wins >= 3) pros.push(`Result: won ${wins} of the last ${n}`);
-  if (next && next.win >= 55)
-    pros.push(`Result: ${next.win}% win chance in the next match`);
-  if (over25 >= 3)
-    pros.push(`Goals: over 2.5 total goals in ${over25} of the last ${n}`);
-  if (gfAvg >= 2)
-    pros.push(`Goals: scoring ${gfAvg.toFixed(1)} per game lately`);
-  if (btts >= 3)
-    pros.push(`Both teams to score: yes in ${btts} of the last ${n}`);
-  if (cleanSheets >= 2)
-    pros.push(`Defence: ${cleanSheets} clean sheets in the last ${n}`);
+  if (next && next.win >= 55) pros.push(`Result: ${next.win}% win chance in the next match`);
+  if (venue.length >= 4 && vWins >= 4) pros.push(`Venue: won ${vWins} of the last ${venue.length} ${where}`);
+  if (all.length >= 8 && points(games) >= points(all) + 0.8) {
+    pros.push(`Form: ${points(games).toFixed(1)} points per game lately against ${points(all).toFixed(1)} this season`);
+  }
+  if (over25 >= 3) pros.push(`Goals: over 2.5 total goals in ${over25} of the last ${n}`);
+  if (gfAvg >= 2) pros.push(`Goals: scoring ${gfAvg.toFixed(1)} per game lately`);
+  if (btts >= 3) pros.push(`Both teams to score: yes in ${btts} of the last ${n}`);
+  if (cleanSheets >= 2) pros.push(`Defence: ${cleanSheets} clean sheets in the last ${n}`);
 
-  if (losses >= 2) cons.push(`Result: lost ${losses} of the last ${n}`);
-  if (wins === 0) cons.push(`Result: no wins in the last ${n}`);
-  if (under25 >= 3)
-    cons.push(
-      `Goals: under 2.5 total goals in ${under25} of the last ${n}, so overs are risky`,
-    );
-  if (blanks >= 2)
-    cons.push(`Goals: failed to score in ${blanks} of the last ${n}`);
-  if (gaAvg >= 1.5)
-    cons.push(`Defence: conceding ${gaAvg.toFixed(1)} per game lately`);
-  if (btts <= 1)
-    cons.push(`Both teams to score: only ${btts} of the last ${n}`);
-  return { pros, cons };
+  // ---- cons, in groups so one weakness never shows up as three bullets ----
+  const resultCons: string[] = [];
+  if (wins === 0) resultCons.push(`Result: no wins in the last ${n}`);
+  else if (wins <= 2 && losses >= 2) resultCons.push(`Result: won ${wins} and lost ${losses} of the last ${n}`);
+  else if (wins <= 2 && n >= 4) resultCons.push(`Result: won only ${wins} of the last ${n}`);
+  else if (losses >= 2) resultCons.push(`Result: lost ${losses} of the last ${n}`);
+  if (draws >= 3) resultCons.push(`Result: ${draws} of the last ${n} ended level, so win bets are risky`);
+  if (next && next.win <= 15) resultCons.push(`Result: just ${next.win}% win chance in the next match`);
+  if (wins >= 3 && games.filter((g) => g.result === "W").every((g) => g.gf - g.ga === 1)) {
+    resultCons.push(`Margins: every win was by a single goal, so handicap bets are risky`);
+  }
+
+  const venueCons: string[] = [];
+  if (venue.length >= 4 && vWins <= 1) venueCons.push(`Venue: won only ${vWins} of the last ${venue.length} ${where}`);
+  else if (venue.length >= 3 && vLosses >= 2) venueCons.push(`Venue: lost ${vLosses} of the last ${venue.length} ${where}`);
+  if (venue.length >= 3 && vConceded >= 2) venueCons.push(`Venue: conceding ${vConceded.toFixed(1)} per game ${where}`);
+
+  const trendCons: string[] = [];
+  if (all.length >= 8 && points(games) <= points(all) - 0.8) {
+    trendCons.push(`Form dip: ${points(games).toFixed(1)} points per game lately against ${points(all).toFixed(1)} this season`);
+  }
+
+  const goalCons: string[] = [];
+  if (blanks >= 2) goalCons.push(`Goals: failed to score in ${blanks} of the last ${n}`);
+  else if (oneOrNone >= 4) goalCons.push(`Goals: scored one or none in ${oneOrNone} of the last ${n}`);
+  if (under25 >= 3) goalCons.push(`Goals: under 2.5 total goals in ${under25} of the last ${n}, so overs are risky`);
+  if (lowTotals >= 3 && under25 < 4) goalCons.push(`Goals: ${lowTotals} of the last ${n} had one goal or fewer in total, so even over 1.5 isn't safe`);
+
+  const defenceCons: string[] = [];
+  if (gaAvg >= 1.8) defenceCons.push(`Defence: conceding ${gaAvg.toFixed(1)} per game lately`);
+  else if (conceded2 >= 4) defenceCons.push(`Defence: conceded two or more in ${conceded2} of the last ${n}`);
+
+  if (btts === 0) defenceCons.push(`Both teams to score: only ${btts} of the last ${n}`);
+
+  cons.push(
+    ...resultCons.slice(0, 2),
+    ...venueCons.slice(0, 2),
+    ...trendCons,
+    ...goalCons.slice(0, 1),
+    ...defenceCons.slice(0, 1),
+  );
+
+  return { pros: pros.slice(0, 6), cons: cons.slice(0, 4) };
 }
 
 function headline(next: Omit<NextMatch, "headline">, teamName: string) {
@@ -277,7 +324,7 @@ export function buildTeamInfos(
         cleanSheets: share((g) => g.ga === 0),
         failedToScore: share((g) => g.gf === 0),
       },
-      ...betAngles(games, next),
+      ...betAngles(all, next),
       next,
     };
   }

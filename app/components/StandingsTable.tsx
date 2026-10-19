@@ -154,7 +154,11 @@ function HeadToHead({
 
 function Bullets({ items, tone }: { items: string[]; tone: "good" | "bad" }) {
   if (items.length === 0) {
-    return <p className="text-sm text-muted">Nothing stands out</p>;
+    return (
+      <p className="text-sm text-muted">
+        {tone === "good" ? "No standout strengths in the recent results" : "No clear red flags in the recent results"}
+      </p>
+    );
   }
   return (
     <ul className="space-y-2 text-sm">

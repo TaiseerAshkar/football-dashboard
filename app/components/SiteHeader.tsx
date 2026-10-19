@@ -16,7 +16,7 @@ function PlainNav() {
   );
 }
 
-// On very narrow phones the links drop to a second row, so the logo, search and
+// Below tablet width the links drop to a second row, so the logo, name, search and
 // theme buttons always fit on the first.
 export function SiteHeader() {
   return (
@@ -29,9 +29,14 @@ export function SiteHeader() {
           >
             ⚽
           </span>
-          <span className="hidden min-[380px]:inline">Football Dashboard</span>
+          <span className="flex flex-col leading-none">
+            <span className="text-[15px] font-semibold tracking-tight">Football Dashboard</span>
+            <span className="mt-1 text-[10px] font-medium uppercase tracking-[0.2em] text-muted">
+              by <span className="text-gradient font-bold">Taiseer</span>
+            </span>
+          </span>
         </Link>
-        <div className="order-3 flex w-full justify-center min-[400px]:order-none min-[400px]:w-auto">
+        <div className="order-3 flex w-full justify-center sm:order-none sm:w-auto">
           <Suspense fallback={<PlainNav />}>
             <HeaderNav />
           </Suspense>

@@ -6,7 +6,7 @@ import { FormBadges } from "@/app/components/FormBadges";
 import { ProbBar } from "@/app/components/ProbBar";
 import type { TeamInfo } from "@/lib/analysis";
 import type { Match } from "@/lib/football";
-import { useFavourite } from "@/lib/favourite";
+import { useFavourites } from "@/lib/favourite";
 import { headToHead } from "@/lib/h2h";
 import { zoneFor, type ZoneKind, type Zones } from "@/lib/leagues";
 import type { LiveRow } from "@/lib/live";
@@ -301,7 +301,7 @@ export function StandingsTable({
   league: string;
 }) {
   const [openId, setOpenId] = useState<number | null>(null);
-  const fav = useFavourite();
+  const favs = useFavourites();
   const legend = (["top", "mid", "bottom"] as const).flatMap((k) => (zones[k] ? [{ k, label: zones[k]!.label }] : []));
 
   return (
@@ -327,7 +327,7 @@ export function StandingsTable({
               const open = openId === row.team.id;
               const zone = zoneFor(row.position, rows.length, zones) ?? "none";
               const name = row.team.shortName ?? row.team.name;
-              const isFav = fav?.id === row.team.id;
+              const isFav = favs.some((f) => f.id === row.team.id);
               return (
                 <Fragment key={row.team.id}>
                   <tr

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { setFavourite, useFavourite } from "@/lib/favourite";
+import { toggleFavourite, useFavourites } from "@/lib/favourite";
 import { LEAGUES } from "@/lib/leagues";
 import { loadIndex } from "@/lib/searchIndex";
 import { crestUrl, type SearchIndex, type SearchTeam } from "@/lib/searchTypes";
@@ -57,7 +57,7 @@ function Crest({ id }: { id: number }) {
 
 export function QuickSearch() {
   const router = useRouter();
-  const fav = useFavourite();
+  const favs = useFavourites();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState<SearchIndex | null>(null);
@@ -115,8 +115,10 @@ export function QuickSearch() {
   const items = useMemo<Item[]>(() => {
     const out: Item[] = [];
     if (q === "") {
-      const mine = fav ? index?.teams.find((t) => t.id === fav.id) : undefined;
-      if (mine) out.push({ kind: "team", team: mine });
+      for (const f of favs) {
+        const mine = index?.teams.find((t) => t.id === f.id);
+        if (mine) out.push({ kind: "team", team: mine });
+      }
       LEAGUES.forEach((l) => out.push({ kind: "league", code: l.code, name: l.name }));
       PAGES.forEach((p) => out.push({ kind: "page", ...p }));
       return out;
@@ -129,7 +131,7 @@ export function QuickSearch() {
     LEAGUES.filter((l) => norm(l.name).includes(q)).forEach((l) => out.push({ kind: "league", code: l.code, name: l.name }));
     PAGES.filter((p) => norm(p.label).includes(q)).forEach((p) => out.push({ kind: "page", ...p }));
     return out;
-  }, [q, index, fav]);
+  }, [q, index, favs]);
 
   useEffect(() => setActive(0), [q]);
   useEffect(() => {
@@ -231,7 +233,7 @@ export function QuickSearch() {
                 if (item.kind === "team") {
                   const t = item.team;
                   const isOpen = expanded === t.id;
-                  const isFav = fav?.id === t.id;
+                  const isFav = favs.some((f) => f.id === t.id);
                   return (
                     <div key={`t${t.id}`}>
                       {title}
@@ -248,10 +250,10 @@ export function QuickSearch() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setFavourite(isFav ? null : { id: t.id, name: t.name })}
+                          onClick={() => toggleFavourite({ id: t.id, name: t.name })}
                           aria-pressed={isFav}
-                          aria-label={isFav ? `Remove ${t.name} as favourite` : `Make ${t.name} your favourite`}
-                          title={isFav ? "Your favourite team" : "Pin as favourite"}
+                          aria-label={isFav ? `Remove ${t.name} as favourite` : `Add ${t.name} to your favourites`}
+                          title={isFav ? "One of your favourite teams" : "Add to favourites"}
                           className={`mr-3 grid h-9 w-9 shrink-0 place-items-center rounded-lg text-lg transition-colors ${isFav ? "text-amber-400" : "text-muted hover:text-amber-400"}`}
                         >
                           {isFav ? "★" : "☆"}

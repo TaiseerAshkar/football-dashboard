@@ -2,29 +2,43 @@
 
 import { useSyncExternalStore } from "react";
 
-// The favourite team lives in this browser only (localStorage). Every component
-// that shows it listens for changes, so pinning a team updates the page at once.
+// Favourite teams live in this browser only (localStorage), as many as the user
+// likes. Every component that shows them listens for changes, so pinning a team
+// updates the page at once.
 export type Favourite = { id: number; name: string };
 
-const KEY = "favourite-team-v1";
+const KEY = "favourite-teams-v1";
+const OLD_KEY = "favourite-team-v1"; // single favourite from the first version
 const EVENT = "favourite-changed";
 
+const EMPTY: Favourite[] = [];
 let lastRaw: string | null | undefined;
-let lastValue: Favourite | null = null;
+let lastValue: Favourite[] = EMPTY;
 
-// Must return the same object until the stored text changes.
-function snapshot(): Favourite | null {
-  let raw: string | null = null;
+const valid = (v: unknown): v is Favourite =>
+  !!v && typeof (v as Favourite).id === "number" && typeof (v as Favourite).name === "string";
+
+function read(): string | null {
   try {
-    raw = localStorage.getItem(KEY);
-  } catch {}
+    const raw = localStorage.getItem(KEY);
+    if (raw !== null) return raw;
+    const old = localStorage.getItem(OLD_KEY);
+    return old ? `[${old}]` : null;
+  } catch {
+    return null;
+  }
+}
+
+// Must return the same array until the stored text changes.
+function snapshot(): Favourite[] {
+  const raw = read();
   if (raw !== lastRaw) {
     lastRaw = raw;
     try {
-      const v = raw ? JSON.parse(raw) : null;
-      lastValue = v && typeof v.id === "number" && typeof v.name === "string" ? v : null;
+      const v = raw ? JSON.parse(raw) : [];
+      lastValue = Array.isArray(v) && v.length > 0 ? v.filter(valid) : EMPTY;
     } catch {
-      lastValue = null;
+      lastValue = EMPTY;
     }
   }
   return lastValue;
@@ -39,16 +53,26 @@ function subscribe(callback: () => void) {
   };
 }
 
-export function useFavourite(): Favourite | null {
-  return useSyncExternalStore(subscribe, snapshot, () => null);
+export function useFavourites(): Favourite[] {
+  return useSyncExternalStore(subscribe, snapshot, () => EMPTY);
 }
 
-export function setFavourite(fav: Favourite | null) {
+function save(list: Favourite[]) {
   try {
-    if (fav) localStorage.setItem(KEY, JSON.stringify(fav));
-    else localStorage.removeItem(KEY);
+    localStorage.setItem(KEY, JSON.stringify(list));
+    localStorage.removeItem(OLD_KEY);
   } catch {}
   window.dispatchEvent(new Event(EVENT));
+}
+
+// Adds the team, or removes it when it is already a favourite.
+export function toggleFavourite(fav: Favourite) {
+  const list = snapshot();
+  save(list.some((f) => f.id === fav.id) ? list.filter((f) => f.id !== fav.id) : [...list, fav]);
+}
+
+export function removeFavourite(id: number) {
+  save(snapshot().filter((f) => f.id !== id));
 }
 
 // Lets any component open the search box (it listens for this event).

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { Leg } from "@/lib/analysis";
+import type { Leg } from "@/lib/odds";
 
-type Pick = Leg & { odds: number };
+type Pick = Leg;
 type Built = { picks: Pick[]; odds: number; chance: number; avgLeg: number; close: boolean };
 
 const TARGETS = [2, 3, 5, 10, 20, 50, 100, 150, 300];
@@ -34,27 +34,30 @@ const shuffle = <T,>(xs: T[]) => {
   return a;
 };
 
-// Random search: pick n different matches, then repeatedly swap one leg for the
-// bet that moves the combined odds closest to the target. Keeps the best of many tries.
+// Random search: pick n different matches, then repeatedly swap legs to land on the
+// target odds with the safest (highest chance) combination. Keeps the best of many tries.
 function build(legs: Leg[], n: number, target: number): Built | string {
-  const all: Pick[] = legs.map((l) => ({ ...l, odds: 1 / l.prob }));
+  const all: Pick[] = legs;
   const matchIds = [...new Set(all.map((l) => l.matchId))];
   if (matchIds.length < n) {
     return `Only ${matchIds.length} matches in the next 7 days. Choose fewer legs.`;
   }
   const g = Math.log(target) / n; // ideal log-odds per leg
-  const byMatch = new Map<number, Pick[]>();
+  const byMatch = new Map<string, Pick[]>();
   for (const p of all) byMatch.set(p.matchId, [...(byMatch.get(p.matchId) ?? []), p]);
 
+  // Lower is better. First priority: land on the target odds. Second: be as safe
+  // as possible, meaning the highest chance that every leg hits (the sum of
+  // -ln(chance) is smallest when the product of the chances is largest).
   const score = (sel: Pick[]) => {
     const total = sel.reduce((s, p) => s + Math.log(p.odds), 0);
-    const spread = sel.reduce((s, p) => s + Math.abs(Math.log(p.odds) - g), 0);
-    return Math.abs(total - Math.log(target)) * 10 + spread * 0.3;
+    const risk = sel.reduce((s, p) => s - Math.log(p.prob), 0);
+    return Math.abs(total - Math.log(target)) * 15 + risk;
   };
 
   let best: Pick[] | null = null;
   let bestScore = Infinity;
-  for (let attempt = 0; attempt < 150; attempt++) {
+  for (let attempt = 0; attempt < 250; attempt++) {
     const ids = shuffle(matchIds).slice(0, n);
     let sel = ids.map((id) => {
       const options = byMatch.get(id)!;
@@ -107,18 +110,26 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ParlayBuilder({ legs }: { legs: Leg[] }) {
+export function ParlayBuilder({
+  legs,
+  meta,
+}: {
+  legs: Leg[];
+  meta: { remaining: number | null; updated: string | null };
+}) {
   const [count, setCount] = useState(5);
   const [preset, setPreset] = useState("5");
   const [custom, setCustom] = useState("");
+  const [includeEstimated, setIncludeEstimated] = useState(false);
   const [result, setResult] = useState<Built | string | null>(null);
 
   const target = preset === "custom" ? Number(custom) : Number(preset);
 
   function run() {
     if (!(target > 1)) return setResult("Enter target odds above 1.");
-    if (legs.length === 0) return setResult("No upcoming matches loaded yet.");
-    setResult(build(legs, count, target));
+    const pool = includeEstimated ? legs : legs.filter((l) => !l.approx);
+    if (pool.length === 0) return setResult("No upcoming matches loaded yet.");
+    setResult(build(pool, count, target));
   }
 
   const built = result && typeof result !== "string" ? result : null;
@@ -157,6 +168,20 @@ export function ParlayBuilder({ legs }: { legs: Leg[] }) {
             {built ? "Build another" : "Build parlay"}
           </button>
         </div>
+        <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={includeEstimated}
+            onChange={(e) => setIncludeEstimated(e.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-[var(--accent)]"
+          />
+          <span>
+            Include double-chance legs
+            <span className="block text-xs text-muted">
+              Their prices are estimated from the match-result odds, so they can be a few percent off.
+            </span>
+          </span>
+        </label>
         {preset === "custom" && (
           <label className="mt-4 block max-w-[12rem] text-sm font-medium">
             <span className="mb-1.5 block text-muted">Custom odds</span>
@@ -216,14 +241,19 @@ export function ParlayBuilder({ legs }: { legs: Leg[] }) {
                   {i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{p.pick}</p>
+                  <p className="font-medium">
+                    {p.pick}
+                    {p.approx && <span className="ml-1.5 text-xs font-normal text-muted">≈ estimated</span>}
+                  </p>
                   <p className="text-xs text-muted">
                     {p.match} · {p.league} · {formatKickoff(p.date)} UTC
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-base font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
-                  <p className="text-[11px] tabular-nums text-muted">{(p.prob * 100).toFixed(0)}%</p>
+                  <p className="text-[11px] tabular-nums text-muted">
+                    {(p.prob * 100).toFixed(0)}% · {p.source}
+                  </p>
                 </div>
               </li>
             ))}
@@ -232,10 +262,15 @@ export function ParlayBuilder({ legs }: { legs: Leg[] }) {
       )}
 
       <p className="rounded-xl bg-surface-2 p-4 text-xs leading-relaxed text-muted">
-        Odds shown are the model&apos;s own fair odds (1 divided by its estimated chance), not real
-        sportsbook prices. Bookmakers take a margin on every leg, so real odds for the same bets are
-        lower. The model is a simple goals estimate and is often wrong. Parlays lose money over time
-        because the margin multiplies across legs. For information only, not betting advice.
+        Odds are real bookmaker prices (mostly Betsson, whose prices track Stake&apos;s closely) from The
+        Odds API. Stake itself isn&apos;t available, so always check the final price on Stake before
+        betting. &quot;Estimated&quot; double-chance prices are derived from the match-result prices and can
+        be a little off. Odds refresh about once a day, so lines may have moved. &quot;Chance all hit&quot; is
+        the market&apos;s implied chance with the bookmaker&apos;s margin removed, and parlays still lose
+        money over time because the margin multiplies across legs. For information only, not betting
+        advice.
+        {meta.updated && ` Odds fetched ${meta.updated}.`}
+        {meta.remaining !== null && ` Odds API credits left this month: ${meta.remaining}.`}
       </p>
     </div>
   );

@@ -20,7 +20,7 @@ export type StandingsResult =
 
 // Cached for 5 minutes. Failures are returned (not thrown) so callers can show
 // a message, and they get a very short cache life so they're retried quickly.
-export async function getStandings(): Promise<StandingsResult> {
+export async function getStandings(league: string): Promise<StandingsResult> {
   "use cache";
   cacheLife({ stale: 300, revalidate: 300, expire: 3600 });
 
@@ -29,7 +29,7 @@ export async function getStandings(): Promise<StandingsResult> {
     return { ok: false, status, error };
   };
 
-  const r = await apiGet("/competitions/PL/standings");
+  const r = await apiGet(`/competitions/${league}/standings`);
   if (!r.ok) return fail(r.status, r.error);
 
   // "TOTAL" is the full-season table (the API also returns HOME and AWAY).

@@ -1,54 +1,32 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { FormBadges } from "@/app/components/FormBadges";
+import { StandingsTable } from "@/app/components/StandingsTable";
+import { buildTeamInfos } from "@/lib/analysis";
 import { getMatches, getScorers, type Scorer } from "@/lib/football";
-import { lastFive } from "@/lib/form";
+import { LEAGUES, parseLeague, type LeagueCode } from "@/lib/leagues";
 import { getStandings } from "@/lib/standings";
 
-async function Standings() {
-  const [standings, matches] = await Promise.all([getStandings(), getMatches()]);
+async function Standings({ league }: { league: LeagueCode }) {
+  const [standings, matches] = await Promise.all([getStandings(league), getMatches(league)]);
   if (!standings.ok) {
     return <p className="text-red-600">Could not load standings: {standings.error}</p>;
   }
 
+  // If the matches request failed, the table still shows; form and predictions are just empty.
+  const infos = matches.ok
+    ? buildTeamInfos(
+        matches.data,
+        standings.table.map((r) => ({ id: r.team.id, name: r.team.shortName ?? r.team.name })),
+      )
+    : {};
+
   return (
-    <table className="w-full text-left text-sm [&_td]:px-2 [&_th]:px-2">
-      <thead>
-        <tr className="border-b">
-          <th className="py-2">#</th>
-          <th>Team</th>
-          <th>P</th>
-          <th>W</th>
-          <th>D</th>
-          <th>L</th>
-          <th>GD</th>
-          <th>Pts</th>
-          <th>Form</th>
-        </tr>
-      </thead>
-      <tbody>
-        {standings.table.map((row) => (
-          <tr key={row.team.id} className="border-b">
-            <td className="py-2">{row.position}</td>
-            <td>
-              <Link href={`/team/${row.team.id}`} className="font-medium hover:underline">
-                {row.team.name}
-              </Link>
-            </td>
-            <td>{row.playedGames}</td>
-            <td>{row.won}</td>
-            <td>{row.draw}</td>
-            <td>{row.lost}</td>
-            <td>{row.goalDifference}</td>
-            <td className="font-semibold">{row.points}</td>
-            <td>
-              {/* If the matches request failed, the form column is just empty. */}
-              {matches.ok && <FormBadges games={lastFive(matches.data, row.team.id)} />}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      <StandingsTable rows={standings.table} infos={infos} />
+      <p className="mt-2 text-xs text-zinc-500">
+        Click a team to see its next match prediction, last 5 games, and pros and cons.
+      </p>
+    </>
   );
 }
 
@@ -68,10 +46,7 @@ function TopFive({
         {players.map((p, i) => (
           <li key={p.name} className="flex justify-between gap-2 border-b py-1">
             <span>
-              {i + 1}. {p.name}{" "}
-              <Link href={`/team/${p.teamId}`} className="text-zinc-500 hover:underline">
-                ({p.teamName})
-              </Link>
+              {i + 1}. {p.name} <span className="text-zinc-500">({p.teamName})</span>
             </span>
             <span className="font-semibold">{p[stat]}</span>
           </li>
@@ -81,8 +56,8 @@ function TopFive({
   );
 }
 
-async function Leaders() {
-  const result = await getScorers();
+async function Leaders({ league }: { league: LeagueCode }) {
+  const result = await getScorers(league);
   if (!result.ok) {
     return <p className="text-red-600">Could not load top players: {result.error}</p>;
   }
@@ -97,20 +72,47 @@ async function Leaders() {
   );
 }
 
-export default function Home() {
+// The selected league lives in the URL (?league=PD), so every league is linkable.
+async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: string }> }) {
+  const league = parseLeague((await searchParams).league);
+  const name = LEAGUES.find((l) => l.code === league)!.name;
+
   return (
-    <main className="mx-auto max-w-3xl space-y-10 p-8">
+    <>
+      <nav className="flex flex-wrap gap-2">
+        {LEAGUES.map((l) => (
+          <Link
+            key={l.code}
+            href={`/?league=${l.code}`}
+            className={`rounded-full border px-3 py-1 text-sm ${
+              l.code === league ? "bg-foreground text-background" : "hover:bg-black/[.06] dark:hover:bg-white/[.1]"
+            }`}
+          >
+            {l.name}
+          </Link>
+        ))}
+      </nav>
       <section>
-        <h1 className="mb-4 text-2xl font-semibold">Premier League</h1>
+        <h1 className="mb-4 text-2xl font-semibold">{name}</h1>
         <Suspense fallback={<p>Loading standings...</p>}>
-          <Standings />
+          <Standings league={league} />
         </Suspense>
       </section>
       <section>
         <Suspense fallback={<p>Loading top players...</p>}>
-          <Leaders />
+          <Leaders league={league} />
         </Suspense>
       </section>
+    </>
+  );
+}
+
+export default function Home({ searchParams }: { searchParams: Promise<{ league?: string }> }) {
+  return (
+    <main className="mx-auto max-w-3xl space-y-8 p-8">
+      <Suspense fallback={<p>Loading...</p>}>
+        <Dashboard searchParams={searchParams} />
+      </Suspense>
     </main>
   );
 }

@@ -5,6 +5,8 @@ export type Result<T> =
   | { ok: false; status: number; error: string };
 
 const FIVE_MIN = { stale: 300, revalidate: 300, expire: 3600 };
+// Scorer lists change slowly, so cache them longer to save API requests.
+const THIRTY_MIN = { stale: 1800, revalidate: 1800, expire: 7200 };
 const RETRY_SOON = { stale: 0, revalidate: 10, expire: 60 };
 
 // Server-only fetch to football-data.org. Never throws: returns a Result.
@@ -31,25 +33,28 @@ export async function apiGet(path: string): Promise<Result<any>> {
 
 export type Match = {
   date: string;
+  finished: boolean;
   home: { id: number; name: string };
   away: { id: number; name: string };
   homeGoals: number;
   awayGoals: number;
 };
 
-// All finished PL matches this season in ONE request (form for every team is
-// computed from this, so we stay far under the free 10 requests/minute limit).
-export async function getMatches(): Promise<Result<Match[]>> {
+// Every match of the season (finished and upcoming) in ONE request per league.
+// Form, stats, predictions and fixtures are all computed from this, so we stay
+// far under the free 10 requests/minute limit.
+export async function getMatches(league: string): Promise<Result<Match[]>> {
   "use cache";
   cacheLife(FIVE_MIN);
 
-  const r = await apiGet("/competitions/PL/matches?status=FINISHED");
+  const r = await apiGet(`/competitions/${league}/matches`);
   if (!r.ok) {
     cacheLife(RETRY_SOON);
     return r;
   }
   const matches: Match[] = r.data.matches.map((m: any) => ({
     date: m.utcDate,
+    finished: m.status === "FINISHED",
     home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name },
     away: { id: m.awayTeam.id, name: m.awayTeam.shortName ?? m.awayTeam.name },
     homeGoals: m.score.fullTime.home ?? 0,
@@ -68,11 +73,11 @@ export type Scorer = {
 
 // Top 50 scorers. Assist leaders are taken from this list too, so a player
 // with assists but very few goals could be missing (free-tier simplification).
-export async function getScorers(): Promise<Result<Scorer[]>> {
+export async function getScorers(league: string): Promise<Result<Scorer[]>> {
   "use cache";
-  cacheLife(FIVE_MIN);
+  cacheLife(THIRTY_MIN);
 
-  const r = await apiGet("/competitions/PL/scorers?limit=50");
+  const r = await apiGet(`/competitions/${league}/scorers?limit=50`);
   if (!r.ok) {
     cacheLife(RETRY_SOON);
     return r;

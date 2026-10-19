@@ -1,4 +1,4 @@
-import type { Game } from "@/lib/form";
+import type { Game } from "@/lib/analysis";
 
 const COLORS = {
   W: "bg-green-600",

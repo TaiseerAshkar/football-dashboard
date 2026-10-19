@@ -605,7 +605,7 @@ function SavedList({
                   </p>
                   <p className="text-xs text-muted">
                     {p.plan} · {(p.chance * 100).toFixed(1)}% to hit · saved{" "}
-                    {new Date(p.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    {new Date(p.savedAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">

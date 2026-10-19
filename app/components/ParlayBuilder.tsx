@@ -92,7 +92,8 @@ const shuffle = <T,>(xs: T[]) => {
 function search(
   legs: Leg[],
   n: number,
-  target: number,
+  lo: number, // ln of the lowest acceptable total odds
+  hi: number, // ln of the highest acceptable total odds
   minOdds: number,
   score: (sel: Leg[]) => number,
 ): Leg[] | null {
@@ -101,7 +102,8 @@ function search(
   const matchIds = [...new Set(pool.map((l) => l.matchId))];
   if (matchIds.length < n) return null;
 
-  const g = Math.log(target) / n; // ideal log-odds per leg
+  const mid = (lo + hi) / 2; // aim for the middle of the range
+  const g = mid / n; // ideal log-odds per leg
   const byMatch = new Map<string, Leg[]>();
   for (const p of pool) byMatch.set(p.matchId, [...(byMatch.get(p.matchId) ?? []), p]);
 
@@ -125,7 +127,7 @@ function search(
       );
       // also try the single best fix for this slot
       const others = sel.reduce((s, p, k) => (k === i ? s : s + Math.log(p.odds)), 0);
-      const need = Math.log(target) - others;
+      const need = mid - others;
       const fix = candidates.reduce((a, b) =>
         Math.abs(Math.log(a.odds) - need) <= Math.abs(Math.log(b.odds) - need) ? a : b,
       );
@@ -147,13 +149,19 @@ const logSum = (sel: Leg[]) => sel.reduce((s, p) => s + Math.log(p.odds), 0);
 const riskOf = (sel: Leg[]) => sel.reduce((s, p) => s - Math.log(p.prob), 0); // lower = safer
 
 // Three genuinely different ideas for the same games and total odds.
-function build(legs: Leg[], n: number, target: number): Built[] | string {
+function build(legs: Leg[], n: number, low: number, high: number): Built[] | string {
   const matchCount = new Set(legs.map((l) => l.matchId)).size;
   if (matchCount < n) {
     return `Only ${matchCount} ${matchCount === 1 ? "match" : "matches"} with the chosen bet types in that date range. Choose fewer games, more bet types, or widen the dates.`;
   }
-  const g = Math.log(target) / n;
-  const delta = (sel: Leg[]) => Math.abs(logSum(sel) - Math.log(target)) * 15;
+  const lo = Math.log(low);
+  const hi = Math.log(high);
+  const g = (lo + hi) / 2 / n;
+  // zero anywhere inside the wanted range, growing the further outside it is
+  const delta = (sel: Leg[]) => {
+    const t = logSum(sel);
+    return (t < lo ? lo - t : t > hi ? t - hi : 0) * 15;
+  };
   const spread = (sel: Leg[]) => sel.reduce((s, p) => s + Math.abs(Math.log(p.odds) - g), 0);
   const keys = (sel: Leg[]) => sel.map((p) => `${p.matchId}:${p.pick}`);
 
@@ -189,11 +197,12 @@ function build(legs: Leg[], n: number, target: number): Built[] | string {
     },
   ];
 
+  const tolerance = low === high ? 0.15 : 0.03; // a fixed number is allowed more slack than a range
   const out: Built[] = [];
   const taken = new Set<string>();
   const takenMatches = new Set<string>();
   for (const plan of plans) {
-    const sel = search(legs, n, target, plan.minOdds, (s) => plan.score(s, taken, takenMatches));
+    const sel = search(legs, n, lo, hi, plan.minOdds, (s) => plan.score(s, taken, takenMatches));
     if (!sel) continue;
     keys(sel).forEach((k) => taken.add(k));
     sel.forEach((p) => takenMatches.add(p.matchId));
@@ -206,7 +215,7 @@ function build(legs: Leg[], n: number, target: number): Built[] | string {
       odds,
       chance,
       avgLeg,
-      close: Math.abs(Math.log(odds / target)) <= 0.15,
+      close: Math.log(odds) >= lo - tolerance && Math.log(odds) <= hi + tolerance,
       name: plan.name,
       blurb: plan.blurb,
     });
@@ -229,14 +238,14 @@ function Tile({ label, value }: { label: string; value: string }) {
 function OptionCard({
   built,
   index,
-  target,
+  targetLabel,
   formIndex,
   saved,
   onSave,
 }: {
   built: Built;
   index: number;
-  target: number;
+  targetLabel: string;
   formIndex: TeamForm[];
   saved: boolean;
   onSave: () => void;
@@ -266,7 +275,7 @@ function OptionCard({
         <Tile label="Avg leg" value={`${(built.avgLeg * 100).toFixed(0)}%`} />
       </div>
       {!built.close && (
-        <p className="mt-2 text-xs text-muted">Closest I could get to x{target} with these settings.</p>
+        <p className="mt-2 text-xs text-muted">Closest I could get to {targetLabel} with these settings.</p>
       )}
 
       <ol className="mt-3 divide-y divide-line text-sm">
@@ -423,6 +432,8 @@ export function ParlayBuilder({
   const [count, setCount] = useState(5);
   const [preset, setPreset] = useState("5");
   const [custom, setCustom] = useState("");
+  const [rangeLow, setRangeLow] = useState("4");
+  const [rangeHigh, setRangeHigh] = useState("6");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [types, setTypes] = useState<Record<LegKind, boolean>>({
@@ -488,7 +499,10 @@ export function ParlayBuilder({
     });
   }
 
-  const target = preset === "custom" ? Number(custom) : Number(preset);
+  const isRange = preset === "range";
+  const low = isRange ? Number(rangeLow) : preset === "custom" ? Number(custom) : Number(preset);
+  const high = isRange ? Number(rangeHigh) : low;
+  const targetLabel = isRange ? `x${rangeLow} to x${rangeHigh}` : `x${low}`;
 
   function setRange(days: number) {
     const today = new Date();
@@ -521,13 +535,19 @@ export function ParlayBuilder({
       seen.add(key);
       pool.push(l);
     }
-    setResults(pool.length === 0 ? "No matches with those bet types in that date range." : build(pool, count, target));
+    setResults(pool.length === 0 ? "No matches with those bet types in that date range." : build(pool, count, low, high));
   }
 
   function run() {
     setNotice(null);
     setConfirm(null);
-    if (!(target > 1)) return setResults("Enter target odds above 1.");
+    if (!(low > 1) || !(high >= low)) {
+      return setResults(
+        isRange
+          ? "Enter a range like 4 to 6, with the second number at least as big as the first."
+          : "Enter target odds above 1.",
+      );
+    }
     if (!from || !to || from > to) return setResults("Choose a start date that is on or before the end date.");
     if (!Object.values(types).some(Boolean)) return setResults("Choose at least one bet type.");
 
@@ -623,6 +643,7 @@ export function ParlayBuilder({
                 </option>
               ))}
               <option value="custom">Custom...</option>
+              <option value="range">Range...</option>
             </select>
           </label>
           <label className="block text-sm font-medium">
@@ -634,6 +655,38 @@ export function ParlayBuilder({
             <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
           </label>
         </div>
+
+        {isRange && (
+          <div className="mt-4 flex max-w-sm items-end gap-3">
+            <label className="block flex-1 text-sm font-medium">
+              <span className="mb-1.5 block text-muted">Odds from</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="1.1"
+                step="0.1"
+                value={rangeLow}
+                onChange={(e) => setRangeLow(e.target.value)}
+                placeholder="e.g. 4"
+                className={field}
+              />
+            </label>
+            <span className="pb-3 text-muted">to</span>
+            <label className="block flex-1 text-sm font-medium">
+              <span className="mb-1.5 block text-muted">Odds up to</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="1.1"
+                step="0.1"
+                value={rangeHigh}
+                onChange={(e) => setRangeHigh(e.target.value)}
+                placeholder="e.g. 6"
+                className={field}
+              />
+            </label>
+          </div>
+        )}
 
         {preset === "custom" && (
           <label className="mt-4 block max-w-[12rem] text-sm font-medium">
@@ -756,7 +809,7 @@ export function ParlayBuilder({
                 key={i}
                 built={b}
                 index={i}
-                target={target}
+                targetLabel={targetLabel}
                 formIndex={formIndex}
                 saved={saved.some((p) => signature(p.picks) === signature(b.picks))}
                 onSave={() => saveBuilt(b)}

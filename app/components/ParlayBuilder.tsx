@@ -9,6 +9,8 @@ type Built = { picks: Leg[]; odds: number; chance: number; avgLeg: number; close
 
 const TARGETS = [2, 3, 5, 10, 20, 50, 100, 150, 300];
 const OPTIONS = 3;
+// Extra prices cost 1 credit per match, so only the most promising matches get them.
+const CAP_PER_MARKET = 15;
 
 // Same list as in lib/odds.ts (that file is server-only, so it is repeated here).
 const PLAYER_SPORTS = [
@@ -248,6 +250,7 @@ export function ParlayBuilder({
   const [fetched, setFetched] = useState<Set<string>>(new Set());
   const [remaining, setRemaining] = useState<number | null>(meta.remaining);
   const [confirm, setConfirm] = useState<ExtraRequest[] | null>(null);
+  const [confirmNote, setConfirmNote] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [results, setResults] = useState<Built[] | string | null>(null);
@@ -303,18 +306,36 @@ export function ParlayBuilder({
     if (!from || !to || from > to) return setResults("Choose a start date that is on or before the end date.");
     if (!Object.values(types).some(Boolean)) return setResults("Choose at least one bet type.");
 
-    // Which extra odds are still missing for the matches in range?
+    // Which extra odds are still missing? To save credits, only the most promising
+    // matches get them: for double chance and players the ones with the strongest
+    // favourite, for goals-based bets the ones where the over/under is most one-sided.
     const ok = inRange();
-    const events = new Map<string, string>();
-    for (const l of legs) if (ok(l)) events.set(l.matchId, l.sport);
+    const info = new Map<string, { sport: string; fav: number; skew: number }>();
+    for (const l of legs) {
+      if (!ok(l)) continue;
+      const e = info.get(l.matchId) ?? { sport: l.sport, fav: 0, skew: 0 };
+      if (l.kind === "result" && l.pick.endsWith("to win")) e.fav = Math.max(e.fav, l.prob);
+      if (l.kind === "goals" && l.pick.startsWith("Over ") && Math.abs(Number(l.pick.split(" ")[1]) - 2.5) < 0.01) {
+        e.skew = Math.abs(l.prob - 0.5);
+      }
+      info.set(l.matchId, e);
+    }
     const markets = (Object.keys(KIND_MARKET) as LegKind[]).filter((k) => types[k]).map((k) => KIND_MARKET[k]!);
     const pairs: ExtraRequest[] = [];
-    for (const [id, sport] of events) {
-      for (const market of markets) {
-        if (market === "player" && !PLAYER_SPORTS.includes(sport)) continue;
-        if (!fetched.has(`${id}:${market}`)) pairs.push({ id, sport, market });
+    let trimmed = false;
+    for (const market of markets) {
+      const byFavourite = market === "double_chance" || market === "player";
+      const ranked = [...info.entries()]
+        .filter(([, e]) => market !== "player" || PLAYER_SPORTS.includes(e.sport))
+        .sort((x, y) => (byFavourite ? y[1].fav - x[1].fav : y[1].skew - x[1].skew));
+      if (ranked.length > CAP_PER_MARKET) trimmed = true;
+      for (const [id, e] of ranked.slice(0, CAP_PER_MARKET)) {
+        if (!fetched.has(`${id}:${market}`)) pairs.push({ id, sport: e.sport, market });
       }
     }
+    setConfirmNote(
+      trimmed ? `${info.size} matches are in range, so I'll fetch extra prices for the ${CAP_PER_MARKET} most promising per bet type to save credits.` : null,
+    );
 
     if (pairs.length === 0) return buildNow(extraLegs);
     if (pairs.length > 60) {
@@ -475,6 +496,7 @@ export function ParlayBuilder({
             use up to <b>{confirm.length}</b> of your monthly odds credits. They&apos;re saved for a day, so
             building again with the same matches is free.
           </p>
+          {confirmNote && <p className="mt-2 text-muted">{confirmNote}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"

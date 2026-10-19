@@ -15,7 +15,7 @@ async function Builder() {
     ODDS_SPORTS.map(async (s) => ({ sport: s, result: await getOdds(s.key) })),
   );
   const legs = results.flatMap(({ sport, result }) =>
-    result.ok ? buildOddsLegs(result.data.events, sport.league, now, 14) : [],
+    result.ok ? buildOddsLegs(result.data.events, sport.league, now, 14, sport.key) : [],
   );
   const failed = results.flatMap((r) => (r.result.ok ? [] : [{ league: r.sport.league, error: r.result.error }]));
 

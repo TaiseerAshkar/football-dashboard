@@ -3,14 +3,15 @@ import { Suspense } from "react";
 import { StandingsTable } from "@/app/components/StandingsTable";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { buildFixtures, buildTeamInfos } from "@/lib/analysis";
-import { getMatches, getScorers, type Scorer } from "@/lib/football";
+import { getLiveAwareMatches, getScorers, type Scorer } from "@/lib/football";
+import { withLive } from "@/lib/live";
 import { LEAGUES, parseLeague, type LeagueCode } from "@/lib/leagues";
 import { getStandings } from "@/lib/standings";
 
 async function Standings({ league }: { league: LeagueCode }) {
   const [standings, matches] = await Promise.all([
     getStandings(league),
-    getMatches(league),
+    getLiveAwareMatches(league),
   ]);
   if (!standings.ok) {
     return (
@@ -31,9 +32,18 @@ async function Standings({ league }: { league: LeagueCode }) {
       )
     : {};
 
+  const { rows, anyLive } = matches.ok
+    ? withLive(standings.table, matches.data)
+    : { rows: standings.table, anyLive: false };
+
   return (
     <>
-      <StandingsTable rows={standings.table} infos={infos} />
+      {anyLive && (
+        <p className="mb-2 text-sm text-red-600">
+          Live matches are included in the table below, so positions and points are provisional until full time.
+        </p>
+      )}
+      <StandingsTable rows={rows} infos={infos} />
       <p className="mt-2 text-xs text-zinc-500">
         Click a team to see its next match prediction, last 5 games, and pros
         and cons.
@@ -53,13 +63,29 @@ const formatKickoff = (iso: string) =>
   });
 
 async function Fixtures({ league }: { league: LeagueCode }) {
-  const matches = await getMatches(league);
+  const matches = await getLiveAwareMatches(league);
   if (!matches.ok) return null; // the table section already shows the error
   const fixtures = buildFixtures(matches.data);
-  if (fixtures.length === 0) return null;
+  const liveNow = matches.data.filter((m) => m.live);
+  if (fixtures.length === 0 && liveNow.length === 0) return null;
 
   return (
     <section className="mt-10">
+      {liveNow.length > 0 && (
+        <>
+          <h2 className="mb-2 text-lg font-semibold text-red-600">Live now</h2>
+          <ul className="mb-6 text-sm">
+            {liveNow.map((m) => (
+              <li key={m.id} className="flex justify-between gap-4 border-b py-2 font-medium">
+                <span>
+                  {m.home.name} {m.homeGoals}-{m.awayGoals} {m.away.name}
+                </span>
+                <span className="rounded bg-red-600 px-1.5 text-xs font-bold text-white">LIVE</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <h2 className="mb-2 text-lg font-semibold">Next fixtures</h2>
       <ul className="text-sm">
         {fixtures.map((f) => (

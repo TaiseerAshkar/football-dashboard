@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { connection } from "next/server";
 
 export type Result<T> =
   { ok: true; data: T } | { ok: false; status: number; error: string };
@@ -71,6 +72,8 @@ export async function cachedGet(
 
 export type Match = {
   id: number;
+  stage: string;
+  live: boolean;
   date: string;
   finished: boolean;
   home: { id: number; name: string };
@@ -82,6 +85,8 @@ export type Match = {
 const toMatches = (raw: any[]): Match[] =>
   raw.map((m) => ({
     id: m.id,
+    stage: m.stage ?? "",
+    live: ["IN_PLAY", "PAUSED", "LIVE"].includes(m.status),
     date: m.utcDate,
     finished: m.status === "FINISHED",
     home: { id: m.homeTeam.id, name: m.homeTeam.shortName ?? m.homeTeam.name },
@@ -97,6 +102,42 @@ export async function getMatches(league: string): Promise<Result<Match[]>> {
   const r = await cachedGet(`/competitions/${league}/matches`, 300);
   if (!r.ok) return r;
   return { ok: true, data: toMatches(r.data.matches) };
+}
+
+const HOUR = 60 * 60 * 1000;
+const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+// Matches from yesterday to tomorrow, cached for only 60 seconds. This is what
+// gives live scores (and just-finished results) without waiting 5 minutes.
+async function getFreshMatches(league: string): Promise<Result<Match[]>> {
+  const now = Date.now();
+  const r = await cachedGet(
+    `/competitions/${league}/matches?dateFrom=${day(now - 24 * HOUR)}&dateTo=${day(now + 24 * HOUR)}`,
+    60,
+  );
+  if (!r.ok) return r;
+  return { ok: true, data: toMatches(r.data.matches) };
+}
+
+// getMatches(), plus fresh data for any match that could be in play right now.
+// The extra (60s-cached) request only happens while a match is inside its
+// kick-off window, so quiet times cost no extra API requests.
+export async function getLiveAwareMatches(league: string): Promise<Result<Match[]>> {
+  await connection(); // we need the real current time, so run at request time
+  const base = await getMatches(league);
+  if (!base.ok) return base;
+
+  const now = Date.now();
+  const maybeLive = base.data.some((m) => {
+    const t = new Date(m.date).getTime();
+    return !m.finished && t <= now && t > now - 3.5 * HOUR;
+  });
+  if (!maybeLive) return base;
+
+  const fresh = await getFreshMatches(league);
+  if (!fresh.ok) return base; // fall back to the 5-minute data
+  const byId = new Map(fresh.data.map((m) => [m.id, m]));
+  return { ok: true, data: base.data.map((m) => byId.get(m.id) ?? m) };
 }
 
 // Past meetings of the two teams in a fixture, as far back as the API has them

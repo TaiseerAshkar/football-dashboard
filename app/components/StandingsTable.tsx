@@ -5,7 +5,7 @@ import { FormBadges } from "@/app/components/FormBadges";
 import type { TeamInfo } from "@/lib/analysis";
 import type { Match } from "@/lib/football";
 import { headToHead } from "@/lib/h2h";
-import type { StandingRow } from "@/lib/standings";
+import type { LiveRow } from "@/lib/live";
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-GB", {
@@ -194,7 +194,7 @@ export function StandingsTable({
   rows,
   infos,
 }: {
-  rows: StandingRow[];
+  rows: LiveRow[];
   infos: Record<number, TeamInfo>;
 }) {
   const [openId, setOpenId] = useState<number | null>(null);
@@ -242,6 +242,14 @@ export function StandingsTable({
                     </span>
                     <span className="hidden sm:inline">{row.team.name}</span>
                     <span>{open ? "▾" : "▸"}</span>
+                    {row.live && (
+                      <span
+                        title={`Live ${row.live.home ? "vs" : "@"} ${row.live.opponent}`}
+                        className="rounded bg-red-600 px-1.5 text-xs font-bold text-white"
+                      >
+                        LIVE {row.live.gf}-{row.live.ga}
+                      </span>
+                    )}
                   </button>
                 </td>
                 <td>{row.playedGames}</td>

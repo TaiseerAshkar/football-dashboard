@@ -225,7 +225,7 @@ export function buildTeamInfos(
 ) {
   const finished = matches.filter((m) => m.finished);
   const upcoming = matches
-    .filter((m) => !m.finished)
+    .filter((m) => !m.finished && !m.live)
     .sort((a, b) => a.date.localeCompare(b.date));
   const strengths = makeStrengths(finished);
 
@@ -299,7 +299,7 @@ export type Fixture = {
 export function buildFixtures(matches: Match[]): Fixture[] {
   const strengths = makeStrengths(matches.filter((m) => m.finished));
   const upcoming = matches
-    .filter((m) => !m.finished && m.home.id && m.away.id)
+    .filter((m) => !m.finished && !m.live && m.home.id && m.away.id)
     .sort((a, b) => a.date.localeCompare(b.date));
   const teams = new Set(matches.flatMap((m) => [m.home.id, m.away.id]).filter(Boolean));
   const perRound = Math.max(1, Math.floor(teams.size / 2));

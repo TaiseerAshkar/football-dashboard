@@ -65,7 +65,7 @@ async function Leaders({ league }: { league: LeagueCode }) {
   const byAssists = [...result.data].sort((a, b) => b.assists - a.assists).slice(0, 5);
 
   return (
-    <div className="grid gap-8 sm:grid-cols-2">
+    <div className="space-y-6">
       <TopFive title="Top scorers" players={byGoals} stat="goals" />
       <TopFive title="Top assisters" players={byAssists} stat="assists" />
     </div>
@@ -92,24 +92,26 @@ async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: st
           </Link>
         ))}
       </nav>
-      <section>
-        <h1 className="mb-4 text-2xl font-semibold">{name}</h1>
-        <Suspense fallback={<p>Loading standings...</p>}>
-          <Standings league={league} />
-        </Suspense>
-      </section>
-      <section>
-        <Suspense fallback={<p>Loading top players...</p>}>
-          <Leaders league={league} />
-        </Suspense>
-      </section>
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <section>
+          <h1 className="mb-4 text-2xl font-semibold">{name}</h1>
+          <Suspense fallback={<p>Loading standings...</p>}>
+            <Standings league={league} />
+          </Suspense>
+        </section>
+        <aside className="lg:sticky lg:top-8 lg:self-start">
+          <Suspense fallback={<p>Loading top players...</p>}>
+            <Leaders league={league} />
+          </Suspense>
+        </aside>
+      </div>
     </>
   );
 }
 
 export default function Home({ searchParams }: { searchParams: Promise<{ league?: string }> }) {
   return (
-    <main className="mx-auto max-w-3xl space-y-8 p-8">
+    <main className="mx-auto max-w-6xl space-y-8 p-8">
       <Suspense fallback={<p>Loading...</p>}>
         <Dashboard searchParams={searchParams} />
       </Suspense>

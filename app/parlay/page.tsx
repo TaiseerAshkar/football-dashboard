@@ -15,7 +15,7 @@ async function Builder() {
     ODDS_SPORTS.map(async (s) => ({ sport: s, result: await getOdds(s.key) })),
   );
   const legs = results.flatMap(({ sport, result }) =>
-    result.ok ? buildOddsLegs(result.data.events, sport.league, now, 7) : [],
+    result.ok ? buildOddsLegs(result.data.events, sport.league, now, 14) : [],
   );
   const failed = results.flatMap((r) => (r.result.ok ? [] : [{ league: r.sport.league, error: r.result.error }]));
 
@@ -51,12 +51,12 @@ async function Builder() {
 
 export default function ParlayPage() {
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
+    <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Parlay builder</h1>
         <p className="mt-2 text-sm text-muted">
-          Pick how many games and the total odds you want. It builds a combination from this
-          week&apos;s matches using real bookmaker odds and rates the risk.
+          Pick how many games and the total odds you want. It builds three options from the matches in your date range
+          using real bookmaker odds, safest first, and rates the risk of each.
         </p>
       </div>
       <Suspense fallback={<ListSkeleton />}>

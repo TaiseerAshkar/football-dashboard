@@ -66,6 +66,7 @@ export function QuickSearch() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
 
   const show = useCallback(() => {
@@ -99,6 +100,16 @@ export function QuickSearch() {
       window.removeEventListener("open-search", show);
     };
   }, [open, show]);
+
+  // a click or tap anywhere outside the box closes it, like a normal dropdown
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open, close]);
 
   // load the team list the first time the box opens, and keep the page still behind it
   useEffect(() => {
@@ -196,6 +207,7 @@ export function QuickSearch() {
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Search">
           <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={close} />
           <div
+            ref={panelRef}
             onKeyDown={onKeyDown}
             className="fade-up relative mx-auto mt-3 flex max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl sm:mt-[10vh] sm:max-h-[75vh]"
           >
@@ -214,7 +226,9 @@ export function QuickSearch() {
                 className="h-14 w-full min-w-0 bg-transparent text-base outline-none placeholder:text-muted"
               />
               <button type="button" onClick={close} className="shrink-0 rounded-lg border border-line px-2 py-1 text-xs font-medium text-muted hover:text-foreground">
-                Esc
+                <span className="md:hidden" aria-hidden>✕</span>
+                <span className="hidden md:inline">Esc</span>
+                <span className="sr-only md:hidden">Close</span>
               </button>
             </div>
 

@@ -51,7 +51,11 @@ async function Builder() {
       <ParlayBuilder
         legs={legs}
         formIndex={formIndex}
-        meta={{ remaining: remaining !== null && Number.isFinite(remaining) ? remaining : null, updated }}
+        meta={{
+          remaining: remaining !== null && Number.isFinite(remaining) ? remaining : null,
+          updated,
+          fetchedAt: oldest,
+        }}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import {
   type SavedStatus,
 } from "@/lib/saved";
 import type { ExtraMarket, ExtraRequest, Leg, LegKind } from "@/lib/odds";
+import { shareParlay, type SharedParlay } from "@/lib/share";
 
 type Built = {
   picks: Leg[];
@@ -243,6 +244,7 @@ function OptionCard({
   formIndex,
   saved,
   onSave,
+  builtAt,
 }: {
   built: Built;
   index: number;
@@ -250,6 +252,7 @@ function OptionCard({
   formIndex: TeamForm[];
   saved: boolean;
   onSave: () => void;
+  builtAt: string;
 }) {
   const r = risk(built.chance);
   return (
@@ -309,19 +312,63 @@ function OptionCard({
           </li>
         ))}
       </ol>
-      <button
-        type="button"
-        onClick={onSave}
-        disabled={saved}
-        className={`mt-3 h-10 w-full rounded-xl border text-sm font-semibold transition ${
-          saved
-            ? "border-accent bg-accent-soft text-accent"
-            : "border-line bg-surface hover:border-accent hover:text-accent"
-        }`}
-      >
-        {saved ? "✓ Saved" : "Save this parlay"}
-      </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saved}
+          className={`h-10 rounded-xl border text-sm font-semibold transition ${
+            saved
+              ? "border-accent bg-accent-soft text-accent"
+              : "border-line bg-surface hover:border-accent hover:text-accent"
+          }`}
+        >
+          {saved ? "✓ Saved" : "Save"}
+        </button>
+        <ShareButton
+          parlay={toShared(built.name, built.odds, built.chance, built.picks, builtAt)}
+          className="h-10 rounded-xl border border-line bg-surface text-sm font-semibold transition hover:border-accent hover:text-accent"
+        />
+      </div>
     </article>
+  );
+}
+
+const toShared = (
+  plan: string,
+  odds: number,
+  chance: number,
+  picks: SharedParlay["picks"],
+  builtAt: string,
+): SharedParlay => ({
+  plan,
+  odds,
+  chance,
+  builtAt,
+  picks: picks.map((p) => ({
+    pick: p.pick,
+    match: p.match,
+    league: p.league,
+    date: p.date,
+    odds: p.odds,
+    prob: p.prob,
+    source: p.source,
+  })),
+});
+
+// Makes a link containing this exact bet: copies it on a computer, opens the share sheet on a phone.
+function ShareButton({ parlay, className }: { parlay: SharedParlay; className: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "shared">("idle");
+  async function click() {
+    const result = await shareParlay(parlay);
+    if (result === "failed") return;
+    setState(result);
+    setTimeout(() => setState("idle"), 2500);
+  }
+  return (
+    <button type="button" onClick={click} className={className}>
+      {state === "copied" ? "✓ Link copied" : state === "shared" ? "✓ Shared" : "Share link"}
+    </button>
   );
 }
 
@@ -368,15 +415,21 @@ function SavedList({
                   {new Date(p.savedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => onRemove(p.id)}
-                aria-label="Delete saved parlay"
-                title="Delete"
-                className="rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-bad"
-              >
-                ✕
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <ShareButton
+                  parlay={toShared(p.plan, p.odds, p.chance, p.picks, p.savedAt)}
+                  className="rounded-lg px-2 py-1 text-xs font-semibold text-accent transition-colors hover:bg-surface-2"
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemove(p.id)}
+                  aria-label="Delete saved parlay"
+                  title="Delete"
+                  className="rounded-lg px-2 py-1 text-muted transition-colors hover:bg-surface-2 hover:text-bad"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 flex gap-1.5" role="group" aria-label="Result">
@@ -428,7 +481,7 @@ export function ParlayBuilder({
 }: {
   legs: Leg[];
   formIndex: TeamForm[];
-  meta: { remaining: number | null; updated: string | null };
+  meta: { remaining: number | null; updated: string | null; fetchedAt: string | null };
 }) {
   const [countPreset, setCountPreset] = useState("5");
   const [customGames, setCustomGames] = useState("");
@@ -837,6 +890,7 @@ export function ParlayBuilder({
                 formIndex={formIndex}
                 saved={saved.some((p) => signature(p.picks) === signature(b.picks))}
                 onSave={() => saveBuilt(b)}
+                builtAt={meta.fetchedAt ?? new Date().toISOString()}
               />
             ))}
           </div>

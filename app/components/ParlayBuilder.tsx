@@ -565,6 +565,11 @@ function SavedList({
     }
   }
 
+  // bet numbers: 1 is the oldest save, whatever order the cards are shown in
+  const numbers = new Map(
+    [...list].sort((a, b) => +new Date(a.savedAt) - +new Date(b.savedAt)).map((p, i) => [p.id, i + 1] as const),
+  );
+
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -601,6 +606,7 @@ function SavedList({
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold">
+                    <span className="mr-1.5 rounded-md bg-accent-soft px-1.5 py-0.5 text-xs font-bold text-accent">#{numbers.get(p.id)}</span>
                     x{p.odds.toFixed(2)} · {p.picks.length} {p.picks.length === 1 ? "leg" : "legs"}
                   </p>
                   <p className="text-xs text-muted">

@@ -119,7 +119,7 @@ export async function shareParlay(p: SharedParlay): Promise<"shared" | "copied" 
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
   if (touch && typeof navigator.share === "function") {
     try {
-      await navigator.share({ title: "Parlay", text: `Parlay x${p.odds.toFixed(2)}, ${p.picks.length} legs`, url });
+      await navigator.share({ title: "Parlay", text: `Parlay x${p.odds.toFixed(2)} · ${p.picks.length} legs · ${(p.chance * 100).toFixed(0)}% to hit`, url });
       return "shared";
     } catch (e) {
       if ((e as Error).name === "AbortError") return "failed"; // they closed the sheet

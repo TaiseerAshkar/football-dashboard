@@ -1,10 +1,40 @@
+import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { Suspense } from "react";
 import { SaveShared } from "@/app/components/SaveShared";
 import { ListSkeleton } from "@/app/components/Skeletons";
-import { decodeParlay, riskLabel } from "@/lib/share";
+import { buildFormIndex, explain } from "@/lib/explain";
+import { getMatches } from "@/lib/football";
+import { LEAGUES } from "@/lib/leagues";
+import type { Leg, LegKind } from "@/lib/odds";
+import { decodeParlay, riskLabel, type SharedPick } from "@/lib/share";
 
-export const metadata = { title: "Shared parlay" };
+type Search = Promise<{ d?: string }>;
+
+// The title, description and preview image shown when the link is pasted into a chat app.
+export async function generateMetadata({ searchParams }: { searchParams: Search }): Promise<Metadata> {
+  const d = (await searchParams).d;
+  const parlay = d && /^[A-Za-z0-9_-]+$/.test(d) ? await decodeParlay(d) : null;
+  if (!parlay || !d) return { title: "Shared parlay" };
+
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const origin = host ? `${h.get("x-forwarded-proto") ?? "https"}://${host}` : "";
+
+  const title = `x${parlay.odds.toFixed(2)} parlay · ${parlay.picks.length} ${parlay.picks.length === 1 ? "leg" : "legs"} · ${riskLabel(parlay.chance).label}`;
+  const first = parlay.picks.slice(0, 4).map((p) => `${p.pick} (${p.odds.toFixed(2)})`).join(" · ");
+  const rest = parlay.picks.length - 4;
+  const description = rest > 0 ? `${first} · +${rest} more` : first;
+  const image = `${origin}/parlay/share/og?d=${d}`;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, type: "website", images: [{ url: image, width: 1200, height: 630 }] },
+    twitter: { card: "summary_large_image", title, description, images: [image] },
+  };
+}
 
 const kickoff = (iso: string) =>
   new Date(iso).toLocaleString("en-GB", {
@@ -16,7 +46,34 @@ const kickoff = (iso: string) =>
     timeZone: "UTC",
   });
 
-async function Shared({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
+// The link does not say which kind of bet each leg is, so work it out from its text.
+function inferKind(pick: string): LegKind {
+  if (pick.endsWith("to score anytime")) return "player";
+  if (/^(Over|Under) [0-9.]+ goals$/.test(pick)) return "goals";
+  if (pick.startsWith("Both teams")) return "btts";
+  if (pick.endsWith(" or draw") || pick.startsWith("Either team")) return "dc";
+  return "result";
+}
+
+function toLeg(p: SharedPick): Leg {
+  const [home, away] = p.match.split(" vs ");
+  return {
+    matchId: p.match,
+    sport: "",
+    date: p.date,
+    league: p.league,
+    match: p.match,
+    home: home ?? p.match,
+    away: away ?? p.match,
+    pick: p.pick,
+    odds: p.odds,
+    prob: p.prob,
+    source: p.source,
+    kind: inferKind(p.pick),
+  };
+}
+
+async function Shared({ searchParams }: { searchParams: Search }) {
   const d = (await searchParams).d;
   const parlay = d ? await decodeParlay(d) : null;
 
@@ -28,6 +85,11 @@ async function Shared({ searchParams }: { searchParams: Promise<{ d?: string }> 
       </div>
     );
   }
+
+  // Fresh recent-form data (cached) so each leg can show why it could hit. If it
+  // can't load, the reasons just get shorter.
+  const lists = await Promise.all(LEAGUES.map((l) => getMatches(l.code)));
+  const formIndex = buildFormIndex(lists.flatMap((r) => (r.ok ? [r.data] : [])));
 
   const r = riskLabel(parlay.chance);
   const built = new Date(parlay.builtAt).toLocaleString("en-GB", {
@@ -68,22 +130,28 @@ async function Shared({ searchParams }: { searchParams: Promise<{ d?: string }> 
 
         <ol className="mt-4 divide-y divide-line text-sm">
           {parlay.picks.map((p, i) => (
-            <li key={i} className="flex items-start gap-2.5 py-2.5">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-bold text-accent">
-                {i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium leading-snug">{p.pick}</p>
-                <p className="text-xs leading-snug text-muted">
-                  {p.match} · {p.league} · {kickoff(p.date)} UTC
-                </p>
+            <li key={i} className="py-2.5">
+              <div className="flex items-start gap-2.5">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-accent-soft text-[10px] font-bold text-accent">
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium leading-snug">{p.pick}</p>
+                  <p className="text-xs leading-snug text-muted">
+                    {p.match} · {p.league} · {kickoff(p.date)} UTC
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <p className="font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
+                  <p className="text-[11px] tabular-nums text-muted">
+                    {(p.prob * 100).toFixed(0)}% · {p.source}
+                  </p>
+                </div>
               </div>
-              <div className="shrink-0 text-right">
-                <p className="font-semibold tabular-nums">{p.odds.toFixed(2)}</p>
-                <p className="text-[11px] tabular-nums text-muted">
-                  {(p.prob * 100).toFixed(0)}% · {p.source}
-                </p>
-              </div>
+              <p className="mt-1.5 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[11.5px] leading-snug">
+                <span className="font-semibold text-accent">Why: </span>
+                {explain(toLeg(p), formIndex)}
+              </p>
             </li>
           ))}
         </ol>
@@ -93,14 +161,14 @@ async function Shared({ searchParams }: { searchParams: Promise<{ d?: string }> 
 
       <p className="rounded-xl bg-surface-2 p-4 text-xs leading-relaxed text-muted">
         Prices were taken on {built} UTC and may have moved, so check the current odds before betting. Stake itself
-        isn&apos;t covered by the data source, so these are close prices from other bookmakers. For information only,
-        not betting advice.
+        isn&apos;t covered by the data source, so these are close prices from other bookmakers. The reasons use recent
+        results as of now. For information only, not betting advice.
       </p>
     </div>
   );
 }
 
-export default function SharedParlayPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
+export default function SharedParlayPage({ searchParams }: { searchParams: Search }) {
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-10">
       <div>

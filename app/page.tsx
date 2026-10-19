@@ -5,6 +5,7 @@ import { ProbBar } from "@/app/components/ProbBar";
 import { RetryNotice } from "@/app/components/RetryNotice";
 import { ListSkeleton, StoriesSkeleton, TableSkeleton } from "@/app/components/Skeletons";
 import { StandingsTable } from "@/app/components/StandingsTable";
+import { TipOfTheDay } from "@/app/components/TipOfTheDay";
 import { buildFixtures, buildTeamInfos } from "@/lib/analysis";
 import { getLiveAwareMatches, getMatches, getScorers, type Scorer } from "@/lib/football";
 import { LEAGUES, parseLeague, type LeagueCode } from "@/lib/leagues";
@@ -323,6 +324,11 @@ async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: st
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_19rem] lg:gap-8">
         <div className="min-w-0">
+          <div className="mb-6 lg:hidden">
+            <Suspense fallback={null}>
+              <TipOfTheDay />
+            </Suspense>
+          </div>
           <Suspense fallback={<TableSkeleton />}>
             <Standings league={league} />
           </Suspense>
@@ -330,7 +336,12 @@ async function Dashboard({ searchParams }: { searchParams: Promise<{ league?: st
             <Fixtures league={league} />
           </Suspense>
         </div>
-        <aside className="lg:sticky lg:top-20 lg:self-start">
+        <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+          <div className="hidden lg:block">
+            <Suspense fallback={null}>
+              <TipOfTheDay />
+            </Suspense>
+          </div>
           <Suspense fallback={<ListSkeleton />}>
             <Leaders league={league} />
           </Suspense>

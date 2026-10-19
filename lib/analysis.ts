@@ -385,3 +385,26 @@ export function matchup(matches: Match[], homeId: number, awayId: number) {
     score: `${p.bestScore[0]}-${p.bestScore[1]}`,
   };
 }
+
+// Every market the tip of the day can choose from, as % chances, for one match.
+// Strengths are worked out once per league and reused for each match.
+export function leaguePredictor(matches: Match[]) {
+  const strengths = makeStrengths(matches.filter((m) => m.finished));
+  return (homeId: number, awayId: number) => {
+    const p = predict(strengths, homeId, awayId);
+    return {
+      lambdaHome: p.lambdaHome,
+      lambdaAway: p.lambdaAway,
+      homeWin: pct(p.homeWin),
+      draw: pct(p.draw),
+      awayWin: pct(p.awayWin),
+      homeOrDraw: pct(p.homeWin + p.draw),
+      awayOrDraw: pct(p.awayWin + p.draw),
+      over15: pct(p.over15),
+      over25: pct(p.over25),
+      under25: 100 - pct(p.over25),
+      btts: pct(p.btts),
+      noBtts: 100 - pct(p.btts),
+    };
+  };
+}

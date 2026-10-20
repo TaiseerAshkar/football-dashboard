@@ -1210,7 +1210,19 @@ export function ParlayBuilder({
         </div>
 
         <fieldset className="mt-5">
-          <legend className="mb-2 text-sm font-medium text-muted">Bet types to use</legend>
+          <legend className="mb-2 flex w-full items-center justify-between gap-3 text-sm font-medium text-muted">
+            <span>Bet types to use</span>
+            {remaining !== null && (
+              <span
+                title="Odds API credits left this month (free plan: 500 a month)"
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${
+                  remaining <= 0 ? "border-bad/40 bg-bad/10 text-bad" : remaining <= 50 ? "border-amber-500/40 bg-amber-500/10 text-amber-600" : "border-line bg-surface-2 text-foreground"
+                }`}
+              >
+                {remaining} credits left
+              </span>
+            )}
+          </legend>
           <div className="flex flex-wrap gap-2">
             {TYPES.map((t) => {
               const on = types[t.kind];

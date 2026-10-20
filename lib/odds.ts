@@ -319,9 +319,9 @@ function legsFromDetail(event: RawEvent, sport: string, league: string, market: 
   return legs;
 }
 
-// Stop spending on extras when the monthly credits drop below this, so the
-// everyday competition odds (about 18 credits a day) never run dry.
-export const CREDIT_RESERVE = 250;
+// Extras may use every credit left. Only a month with none left stops them (the
+// Odds API would refuse the call anyway).
+export const CREDIT_RESERVE = 0;
 
 export type ExtraRequest = { sport: string; id: string; market: ExtraMarket };
 

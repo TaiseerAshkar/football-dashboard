@@ -1,6 +1,6 @@
 "use server";
 
-import { fetchExtraLegs, ODDS_SPORTS, type ExtraMarket, type ExtraRequest } from "@/lib/odds";
+import { fetchExtraLegs, getCreditBalance, ODDS_SPORTS, type ExtraMarket, type ExtraRequest } from "@/lib/odds";
 import { settleParlays, type CheckParlay } from "@/lib/settle";
 
 const MARKETS: readonly ExtraMarket[] = ["btts", "double_chance", "alternate_totals", "player"];
@@ -40,4 +40,9 @@ export async function checkSavedParlays(parlays: CheckParlay[]) {
     }));
   if (clean.length === 0) return [];
   return settleParlays(clean);
+}
+
+// The real credit balance right now (the free "sports" call reports it).
+export async function loadCreditBalance() {
+  return getCreditBalance();
 }

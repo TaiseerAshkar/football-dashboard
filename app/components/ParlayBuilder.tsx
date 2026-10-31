@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { checkSavedParlays, loadExtraOdds } from "@/app/parlay/actions";
+import { checkSavedParlays, loadCreditBalance, loadExtraOdds } from "@/app/parlay/actions";
 import { explain, type TeamForm } from "@/lib/explain";
 import {
   loadSaved,
@@ -817,6 +817,13 @@ export function ParlayBuilder({
 
   // Default range: today to a week from now (set after load so the server and
   // browser, which can be in different time zones, never disagree).
+  // the balance that came with the page is as old as the saved prices, so ask for the live one
+  useEffect(() => {
+    loadCreditBalance()
+      .then((n) => n !== null && setRemaining(n))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const today = new Date();
     setFrom(localDate(today));

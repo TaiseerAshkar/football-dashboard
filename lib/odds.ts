@@ -323,6 +323,20 @@ function legsFromDetail(event: RawEvent, sport: string, league: string, market: 
 // Odds API would refuse the call anyway).
 export const CREDIT_RESERVE = 0;
 
+// The live credit balance. The sports list is free to ask for and its response
+// headers carry the remaining credits, so this never costs anything.
+export async function getCreditBalance(): Promise<number | null> {
+  const key = process.env.ODDS_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(`https://api.the-odds-api.com/v4/sports/?apiKey=${key}`, { cache: "no-store" });
+    const n = Number(res.headers.get("x-requests-remaining"));
+    return res.headers.get("x-requests-remaining") !== null && Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 export type ExtraRequest = { sport: string; id: string; market: ExtraMarket };
 
 export async function fetchExtraLegs(requests: ExtraRequest[]): Promise<{

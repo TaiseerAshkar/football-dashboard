@@ -181,7 +181,9 @@ function finish(picks: Leg[], name: string, blurb: string, low: number, high: nu
 }
 
 // Three genuinely different ideas for the same games and total odds.
-function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<string>): Built[] | string {
+// `centre` (ln of a single wanted total, like x3) pulls every option toward that number
+// instead of leaving it anywhere in the band, so results land above and below it alike.
+function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<string>, centre?: number): Built[] | string {
   const matchCount = new Set(legs.map((l) => l.matchId)).size;
   if (matchCount < n) {
     return `Only ${matchCount} ${matchCount === 1 ? "match" : "matches"} with the chosen bet types in that date range. Choose fewer games, more bet types, or widen the dates.`;
@@ -192,6 +194,7 @@ function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<st
   // zero anywhere inside the wanted range, growing the further outside it is
   const delta = (sel: Leg[]) => {
     const t = logSum(sel);
+    if (centre !== undefined) return Math.abs(t - centre) * 15;
     return (t < lo ? lo - t : t > hi ? t - hi : 0) * 15;
   };
   const spread = (sel: Leg[]) => sel.reduce((s, p) => s + Math.abs(Math.log(p.odds) - g), 0);
@@ -247,11 +250,11 @@ function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<st
 // the results that really reach the wanted odds, and returns the three most likely
 // to hit (different pick sets only).
 const AUTO_MAX = 8;
-function buildAuto(legs: Leg[], low: number, high: number, pinned: Set<string>): Built[] | string {
+function buildAuto(legs: Leg[], low: number, high: number, pinned: Set<string>, centre?: number): Built[] | string {
   const matchCount = new Set(legs.map((l) => l.matchId)).size;
   const found: Built[] = [];
   for (let n = Math.max(1, pinned.size); n <= Math.min(AUTO_MAX, matchCount); n++) {
-    const out = build(legs, n, low, high, pinned);
+    const out = build(legs, n, low, high, pinned, centre);
     if (typeof out === "string") continue;
     for (const b of out) if (b.close) found.push(b);
   }
@@ -810,7 +813,7 @@ export function ParlayBuilder({
   const [saved, setSaved] = useState<SavedParlay[]>([]);
   const [stake, setStake] = useState("10");
   const [pinned, setPinned] = useState<string[]>([]);
-  const [query, setQuery] = useState<{ pool: Leg[]; low: number; high: number; pinned: string[] } | null>(null);
+  const [query, setQuery] = useState<{ pool: Leg[]; low: number; high: number; pinned: string[]; centre?: number } | null>(null);
   const [checking, setChecking] = useState(false);
   const [open, setOpen] = useState<boolean[]>([true, true, true]);
   const checkedOnce = useRef(false);
@@ -944,10 +947,11 @@ export function ParlayBuilder({
   };
 
   function buildNow(extra: Leg[]) {
-    // a single target like x3 is a target, not an exact number: anything within 15%
-    // either way counts, so safer picks aren't thrown out for missing it by a hair
-    const lowOdds = isRange ? low : low / 1.15;
-    const highOdds = isRange ? high : high * 1.15;
+    // a single target like x3 is a target, not an exact number: anything within 5%
+    // either way counts (x2.85 to x3.15), and options are pulled toward the target
+    const lowOdds = isRange ? low : low / 1.05;
+    const highOdds = isRange ? high : high * 1.05;
+    const centre = isRange ? undefined : Math.log(low);
     const ok = inRange();
     const seen = new Set<string>();
     const pool: Leg[] = [];
@@ -984,10 +988,10 @@ export function ParlayBuilder({
       setQuery(null);
       return setResults(`You pinned ${pins.length} games but chose ${count} games. Choose more games or remove a pin.`);
     }
-    const out = autoCount ? buildAuto(usable, lowOdds, highOdds, new Set(pins)) : build(usable, count, lowOdds, highOdds, new Set(pins));
+    const out = autoCount ? buildAuto(usable, lowOdds, highOdds, new Set(pins), centre) : build(usable, count, lowOdds, highOdds, new Set(pins), centre);
     setResults(out);
     if (typeof out !== "string") setOpen(out.map(() => true)); // a fresh build starts with every option open
-    setQuery(typeof out === "string" ? null : { pool: usable, low: lowOdds, high: highOdds, pinned: pins });
+    setQuery(typeof out === "string" ? null : { pool: usable, low: lowOdds, high: highOdds, pinned: pins, centre });
   }
 
   // Replaces one leg with the next-best bet that keeps the total odds in range.
@@ -1014,7 +1018,7 @@ export function ParlayBuilder({
     const base = others.reduce((s, p) => s + Math.log(p.odds), 0);
     const cost = (c: Leg) => {
       const t = base + Math.log(c.odds);
-      const outside = t < lo ? lo - t : t > hi ? t - hi : 0;
+      const outside = query.centre !== undefined ? Math.abs(t - query.centre) : t < lo ? lo - t : t > hi ? t - hi : 0;
       return outside * 15 - Math.log(c.prob) + (c.odds < 1.1 ? 1 : 0) + Math.random() * 0.02;
     };
     const next = candidates.reduce((x, y) => (cost(x) <= cost(y) ? x : y));

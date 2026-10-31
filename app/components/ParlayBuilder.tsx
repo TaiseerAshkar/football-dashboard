@@ -242,28 +242,39 @@ function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<st
   return out.length ? out : "Could not build options from these matches.";
 }
 
-// "Auto" number of games: tries every size from 1 up to AUTO_MAX games, keeps the
-// ones that really reach the wanted odds, and returns the three with the best chance
-// that every leg hits.
+// "Auto" number of games: the pool it gets is already limited to strong, in-form
+// picks. It tries every size from 1 up to AUTO_MAX games with all three plans, keeps
+// the results that really reach the wanted odds, and returns the three most likely
+// to hit (different pick sets only).
 const AUTO_MAX = 8;
 function buildAuto(legs: Leg[], low: number, high: number, pinned: Set<string>): Built[] | string {
   const matchCount = new Set(legs.map((l) => l.matchId)).size;
   const found: Built[] = [];
   for (let n = Math.max(1, pinned.size); n <= Math.min(AUTO_MAX, matchCount); n++) {
     const out = build(legs, n, low, high, pinned);
-    if (typeof out !== "string" && out[0]?.close) found.push(out[0]);
+    if (typeof out === "string") continue;
+    for (const b of out) if (b.close) found.push(b);
   }
   if (found.length === 0) {
-    return "No number of games from these matches reaches those odds. Widen the dates, add bet types, or change the odds.";
+    return "These strong, in-form picks can't reach those odds. Widen the dates, add bet types, or lower the odds.";
   }
   found.sort((a, b) => b.chance - a.chance);
-  return found.slice(0, 3).map((b, i) => ({
+  const seen = new Set<string>();
+  const top: Built[] = [];
+  for (const b of found) {
+    const key = b.picks.map((p) => `${p.matchId}:${p.pick}`).sort().join("#");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    top.push(b);
+    if (top.length === 3) break;
+  }
+  return top.map((b, i) => ({
     ...b,
-    name: i === 0 ? `Safest · ${b.picks.length} games` : `${b.picks.length} games`,
+    name: i === 0 ? `Safest · ${b.picks.length} games` : `${b.name} · ${b.picks.length} games`,
     blurb:
       i === 0
-        ? "The number of games that reaches your odds with the best chance of every leg hitting."
-        : "A different number of games for the same odds, with a lower chance of every leg hitting.",
+        ? "Strong favourites in good form, as many games as the odds need, with the best chance of every leg hitting."
+        : b.blurb,
   }));
 }
 
@@ -939,7 +950,21 @@ export function ParlayBuilder({
       setQuery(null);
       return setResults("No matches with those bet types in that date range.");
     }
-    const inPool = new Set(pool.map((l) => l.matchId));
+    // Only bets that recent form backs up are used (a pinned game keeps all its bets).
+    // On Auto only strong favourites are used too: at least 60% likely and no longer
+    // than 2.2 odds. If that leaves too few matches, fall back and say so.
+    const pinnedSet = new Set(pinned);
+    const distinct = (list: Leg[]) => new Set(list.map((l) => l.matchId)).size;
+    let usable = pool.filter((l) => pinnedSet.has(l.matchId) || explain(l, formIndex).supports !== false);
+    if (autoCount) {
+      const strong = usable.filter((l) => pinnedSet.has(l.matchId) || (l.prob >= 0.6 && l.odds <= 2.2));
+      if (distinct(strong) >= 2) usable = strong;
+    }
+    if (distinct(usable) < (autoCount ? 2 : count)) {
+      usable = pool;
+      setNotice("Not enough picks that recent form backs up in this range, so some picks here go against recent form.");
+    }
+    const inPool = new Set(usable.map((l) => l.matchId));
     const pins = pinned.filter((id) => inPool.has(id));
     if (pins.length < pinned.length) {
       setNotice("A game you pinned was left out: it has no bets for the chosen bet types, or it is outside the dates.");
@@ -948,10 +973,10 @@ export function ParlayBuilder({
       setQuery(null);
       return setResults(`You pinned ${pins.length} games but chose ${count} games. Choose more games or remove a pin.`);
     }
-    const out = autoCount ? buildAuto(pool, low, high, new Set(pins)) : build(pool, count, low, high, new Set(pins));
+    const out = autoCount ? buildAuto(usable, low, high, new Set(pins)) : build(usable, count, low, high, new Set(pins));
     setResults(out);
     if (typeof out !== "string") setOpen(out.map(() => true)); // a fresh build starts with every option open
-    setQuery(typeof out === "string" ? null : { pool, low, high, pinned: pins });
+    setQuery(typeof out === "string" ? null : { pool: usable, low, high, pinned: pins });
   }
 
   // Replaces one leg with the next-best bet that keeps the total odds in range.
@@ -1132,7 +1157,7 @@ export function ParlayBuilder({
 
         {autoCount && (
           <p className="mt-2 text-xs text-muted">
-            Auto tries different numbers of games and shows the ones that reach your odds with the best chance of hitting.
+            Auto uses only strong favourites that recent form backs up, and adds as many games as your odds need.
           </p>
         )}
 

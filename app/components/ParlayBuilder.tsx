@@ -242,6 +242,62 @@ function build(legs: Leg[], n: number, low: number, high: number, pinned: Set<st
   return out.length ? out : "Could not build options from these matches.";
 }
 
+// "Auto" number of games: tries every size from 1 up to AUTO_MAX games, keeps the
+// ones that really reach the wanted odds, and returns the three with the best chance
+// that every leg hits.
+const AUTO_MAX = 8;
+function buildAuto(legs: Leg[], low: number, high: number, pinned: Set<string>): Built[] | string {
+  const matchCount = new Set(legs.map((l) => l.matchId)).size;
+  const found: Built[] = [];
+  for (let n = Math.max(1, pinned.size); n <= Math.min(AUTO_MAX, matchCount); n++) {
+    const out = build(legs, n, low, high, pinned);
+    if (typeof out !== "string" && out[0]?.close) found.push(out[0]);
+  }
+  if (found.length === 0) {
+    return "No number of games from these matches reaches those odds. Widen the dates, add bet types, or change the odds.";
+  }
+  found.sort((a, b) => b.chance - a.chance);
+  return found.slice(0, 3).map((b, i) => ({
+    ...b,
+    name: i === 0 ? `Safest · ${b.picks.length} games` : `${b.picks.length} games`,
+    blurb:
+      i === 0
+        ? "The number of games that reaches your odds with the best chance of every leg hitting."
+        : "A different number of games for the same odds, with a lower chance of every leg hitting.",
+  }));
+}
+
+const MONTHLY_CREDITS = 500; // the free plan
+
+// How many Odds API credits are left this month, as a bar. The extra bet types
+// spend them (1 per match per bet type); match result and goals are free.
+function CreditMeter({ remaining }: { remaining: number }) {
+  const share = Math.max(0, Math.min(1, remaining / MONTHLY_CREDITS));
+  const tone = remaining <= 0 ? "bad" : remaining <= 50 ? "amber-500" : "good";
+  const bar = { bad: "bg-bad", "amber-500": "bg-amber-500", good: "bg-good" }[tone];
+  return (
+    <div className="mb-5 rounded-xl bg-surface-2 p-3.5 ring-1 ring-line sm:p-4">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Odds credits left this month</p>
+          <p className="mt-0.5 text-2xl font-bold tabular-nums leading-none sm:text-3xl">
+            {remaining}
+            <span className="ml-1 text-sm font-medium text-muted">/ {MONTHLY_CREDITS}</span>
+          </p>
+        </div>
+        <p className="max-w-[11rem] text-right text-[11px] leading-snug text-muted sm:max-w-xs sm:text-xs">
+          {remaining <= 0
+            ? "None left: only the free bet types work until the monthly reset."
+            : "Match result and goals are free. Other bet types cost 1 credit per match."}
+        </p>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-background ring-1 ring-line" role="progressbar" aria-valuenow={remaining} aria-valuemin={0} aria-valuemax={MONTHLY_CREDITS} aria-label="Odds credits left">
+        <div className={`h-full rounded-full ${bar} transition-[width]`} style={{ width: `${share * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
 // Native date inputs show the browser's locale (10/19 on US settings), so the
 // visible text is drawn here as day/month/year and the real input sits invisibly on top.
 function DateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -716,7 +772,7 @@ export function ParlayBuilder({
   formIndex: TeamForm[];
   meta: { remaining: number | null; updated: string | null; fetchedAt: string | null };
 }) {
-  const [countPreset, setCountPreset] = useState("5");
+  const [countPreset, setCountPreset] = useState("auto");
   const [customGames, setCustomGames] = useState("");
   const [preset, setPreset] = useState("5");
   const [custom, setCustom] = useState("");
@@ -841,7 +897,8 @@ export function ParlayBuilder({
     });
   }
 
-  const count = countPreset === "custom" ? Number(customGames) : Number(countPreset);
+  const autoCount = countPreset === "auto";
+  const count = autoCount ? 0 : countPreset === "custom" ? Number(customGames) : Number(countPreset);
   const isRange = preset === "range";
   const low = isRange ? Number(rangeLow) : preset === "custom" ? Number(custom) : Number(preset);
   const high = isRange ? Number(rangeHigh) : low;
@@ -887,11 +944,11 @@ export function ParlayBuilder({
     if (pins.length < pinned.length) {
       setNotice("A game you pinned was left out: it has no bets for the chosen bet types, or it is outside the dates.");
     }
-    if (pins.length > count) {
+    if (!autoCount && pins.length > count) {
       setQuery(null);
       return setResults(`You pinned ${pins.length} games but chose ${count} games. Choose more games or remove a pin.`);
     }
-    const out = build(pool, count, low, high, new Set(pins));
+    const out = autoCount ? buildAuto(pool, low, high, new Set(pins)) : build(pool, count, low, high, new Set(pins));
     setResults(out);
     if (typeof out !== "string") setOpen(out.map(() => true)); // a fresh build starts with every option open
     setQuery(typeof out === "string" ? null : { pool, low, high, pinned: pins });
@@ -943,7 +1000,7 @@ export function ParlayBuilder({
   function run() {
     setNotice(null);
     setConfirm(null);
-    if (!Number.isInteger(count) || count < 1 || count > MAX_GAMES) {
+    if (!autoCount && (!Number.isInteger(count) || count < 1 || count > MAX_GAMES)) {
       return setResults(`Enter a number of games from 1 to ${MAX_GAMES}.`);
     }
     if (!(low > 1) || !(high >= low)) {
@@ -1037,10 +1094,12 @@ export function ParlayBuilder({
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+        {remaining !== null && <CreditMeter remaining={remaining} />}
         <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block text-muted">Number of games</span>
             <select value={countPreset} onChange={(e) => setCountPreset(e.target.value)} className={field}>
+              <option value="auto">Auto (best for my odds)</option>
               {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                 <option key={n} value={n}>
                   {n} {n === 1 ? "game" : "games"}
@@ -1070,6 +1129,12 @@ export function ParlayBuilder({
             <DateField value={to} onChange={setTo} />
           </label>
         </div>
+
+        {autoCount && (
+          <p className="mt-2 text-xs text-muted">
+            Auto tries different numbers of games and shows the ones that reach your odds with the best chance of hitting.
+          </p>
+        )}
 
         {countPreset === "custom" && (
           <label className="mt-4 block max-w-[12rem] text-sm font-medium">
@@ -1210,19 +1275,7 @@ export function ParlayBuilder({
         </div>
 
         <fieldset className="mt-5">
-          <legend className="mb-2 flex w-full items-center justify-between gap-3 text-sm font-medium text-muted">
-            <span>Bet types to use</span>
-            {remaining !== null && (
-              <span
-                title="Odds API credits left this month (free plan: 500 a month)"
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums ${
-                  remaining <= 0 ? "border-bad/40 bg-bad/10 text-bad" : remaining <= 50 ? "border-amber-500/40 bg-amber-500/10 text-amber-600" : "border-line bg-surface-2 text-foreground"
-                }`}
-              >
-                {remaining} credits left
-              </span>
-            )}
-          </legend>
+          <legend className="mb-2 text-sm font-medium text-muted">Bet types to use</legend>
           <div className="flex flex-wrap gap-2">
             {TYPES.map((t) => {
               const on = types[t.kind];
@@ -1272,8 +1325,14 @@ export function ParlayBuilder({
         <div className="rounded-2xl border border-warn/40 bg-warn/10 p-4 text-sm">
           <p>
             Getting these extra prices for <b>{confirmMatches}</b> {confirmMatches === 1 ? "match" : "matches"} will
-            use up to <b>{confirm.length}</b> of your monthly odds credits. They&apos;re saved for a day, so
-            building again with the same matches is free.
+            use up to <b>{confirm.length}</b> of your monthly odds credits
+            {remaining !== null && (
+              <>
+                {" "}
+                (you have <b>{remaining}</b>, leaving about <b>{Math.max(0, remaining - confirm.length)}</b>)
+              </>
+            )}
+            . They&apos;re saved for a day, so building again with the same matches is free.
           </p>
           {confirmNote && <p className="mt-2 text-muted">{confirmNote}</p>}
           <div className="mt-3 flex flex-wrap gap-2">

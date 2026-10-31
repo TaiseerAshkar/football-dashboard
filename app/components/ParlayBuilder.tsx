@@ -937,6 +937,10 @@ export function ParlayBuilder({
   };
 
   function buildNow(extra: Leg[]) {
+    // a single target like x3 is a target, not an exact number: anything within 15%
+    // either way counts, so safer picks aren't thrown out for missing it by a hair
+    const lowOdds = isRange ? low : low / 1.15;
+    const highOdds = isRange ? high : high * 1.15;
     const ok = inRange();
     const seen = new Set<string>();
     const pool: Leg[] = [];
@@ -973,10 +977,10 @@ export function ParlayBuilder({
       setQuery(null);
       return setResults(`You pinned ${pins.length} games but chose ${count} games. Choose more games or remove a pin.`);
     }
-    const out = autoCount ? buildAuto(usable, low, high, new Set(pins)) : build(usable, count, low, high, new Set(pins));
+    const out = autoCount ? buildAuto(usable, lowOdds, highOdds, new Set(pins)) : build(usable, count, lowOdds, highOdds, new Set(pins));
     setResults(out);
     if (typeof out !== "string") setOpen(out.map(() => true)); // a fresh build starts with every option open
-    setQuery(typeof out === "string" ? null : { pool: usable, low, high, pinned: pins });
+    setQuery(typeof out === "string" ? null : { pool: usable, low: lowOdds, high: highOdds, pinned: pins });
   }
 
   // Replaces one leg with the next-best bet that keeps the total odds in range.
